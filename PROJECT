@@ -7,4 +7,13 @@ layout:
 - go.kubebuilder.io/v4
 projectName: azure-pipelines-k8s-agent-scaler
 repo: github.com/MShekow/azure-pipelines-k8s-agent-scaler
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: azurepipelines.k8s.scaler.io
+  kind: AutoScaledAgent
+  path: github.com/MShekow/azure-pipelines-k8s-agent-scaler/api/v1
+  version: v1
 version: "3"

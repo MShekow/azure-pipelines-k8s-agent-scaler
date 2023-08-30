@@ -1,0 +1,31 @@
+# permissions for end users to edit autoscaledagents.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: autoscaledagent-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: azure-pipelines-k8s-agent-scaler
+    app.kubernetes.io/part-of: azure-pipelines-k8s-agent-scaler
+    app.kubernetes.io/managed-by: kustomize
+  name: autoscaledagent-editor-role
+rules:
+- apiGroups:
+  - azurepipelines.k8s.scaler.io
+  resources:
+  - autoscaledagents
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - azurepipelines.k8s.scaler.io
+  resources:
+  - autoscaledagents/status
+  verbs:
+  - get

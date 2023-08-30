@@ -1,0 +1,27 @@
+# permissions for end users to view autoscaledagents.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: autoscaledagent-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: azure-pipelines-k8s-agent-scaler
+    app.kubernetes.io/part-of: azure-pipelines-k8s-agent-scaler
+    app.kubernetes.io/managed-by: kustomize
+  name: autoscaledagent-viewer-role
+rules:
+- apiGroups:
+  - azurepipelines.k8s.scaler.io
+  resources:
+  - autoscaledagents
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - azurepipelines.k8s.scaler.io
+  resources:
+  - autoscaledagents/status
+  verbs:
+  - get
