@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,7 +27,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/remotecommand"
 	"net/http"
+	"sort"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -43,7 +47,9 @@ var jobOwnerKey = ".metadata.controller"
 // AutoScaledAgentReconciler reconciles a AutoScaledAgent object
 type AutoScaledAgentReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	RESTClient rest.Interface
+	RESTConfig *rest.Config
+	Scheme     *runtime.Scheme
 }
 
 //+kubebuilder:rbac:groups=azurepipelines.k8s.scaler.io,resources=autoscaledagents,verbs=get;list;watch;create;update;patch;delete
@@ -52,11 +58,7 @@ type AutoScaledAgentReconciler struct {
 
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
-
-// TODO add permissions for kubectl exec
-//   - apiGroups: [""]
-//    resources: ["pods/exec"]
-//    verbs: ["create"]
+//+kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
 
 // Reconcile is called for every change in AutoScaledAgent CRs, or when any of their underlying Pods have changed
 func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -66,13 +68,22 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err := r.Get(ctx, req.NamespacedName, &autoScaledAgent); err != nil {
 		logger.Error(err, "unable to fetch AutoScaledAgent")
 		// Note: client.IgnoreNotFound(err) will convert "err" to "nil" IF the error is of a "not found" type,
-		// because the default kubecontroller behavior (retrying requests when errors are returned) does not make sense
+		// because the default kube-controller behavior (retrying requests when errors are returned) does not make sense
 		// for resources that have already disappeared
-		// TODO: we might want to NOT return here already, but still do some clean-up work
+		// Note that Kubernetes' deletion propagation feature will automatically make sure that deleting a CR also
+		// deletes the Pods created for that CR
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// TODO: delete terminated pods that the controller owns
+	err := r.deleteTerminatedAgentPods(ctx, req, *autoScaledAgent.Spec.MaxPodsToKeep)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.terminatedFinishedAgentPods(ctx, req)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	// TODO stop with error in case there are multiple CRs targeting the same ADP pool
 
@@ -87,12 +98,21 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	fmt.Printf("Poolname %d", poolId)
 
+	_, err = service.CreateOrUpdateDummyAgents(ctx, poolId, azurePat, httpClient, &autoScaledAgent.Spec)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	// TODO call another method that deletes any offline agent (with name starting
+	// with dummy-agent) that has been created some time ago, except for those dummy
+	// agents we created in CreateOrUpdateDummyAgents. Also, that method should not
+	// be doing work all the time, just e.g. once per hour
+
 	pendingJobs, err := service.GetPendingJobs(ctx, poolId, azurePat, httpClient, &autoScaledAgent.Spec)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	runningPodsRaw, err := r.getRunningPods(ctx, req)
+	runningPodsRaw, err := r.getPodsWithPhases(ctx, req, []string{"Running", "Pending"})
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -111,7 +131,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				&podsWithCapabilities.Capabilities); err != nil {
 				return ctrl.Result{}, err
 			}
-			continue
+			continue // Do not run the remaining code, to avoid the risk of running conflicting logic in one iteration
 		}
 
 		maxAgentsAllowedToCreate := *podsWithCapabilities.MaxCount - matchingPodsCount
@@ -134,16 +154,19 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				// Delete superfluous pods.
 				// Although the number of pods has not exceeded maxCount, we might still have too
 				// many pods (more than there are jobs), and thus should kill pods. However, this
-				// should be very rare, because agent pods terminate after having completed a job
+				// should be very rare, because agent pods automatically terminate after having completed a job
+				// (due to using the "--once" flag)
 				for capabilitiesStr, pods := range *matchingPods {
 					matchingJobCount := len((*matchingJobs)[capabilitiesStr])
-					if len(pods) > matchingJobCount {
+					if len(pods) > service.Max(matchingJobCount, int(*podsWithCapabilities.MinCount)) {
 						if terminateablePod, err := r.getTerminateablePod(ctx, matchingPods); err != nil {
 							return ctrl.Result{}, err
 						} else {
-							err := r.Delete(ctx, terminateablePod, client.PropagationPolicy(metav1.DeletePropagationBackground))
-							if err != nil {
-								return ctrl.Result{}, err
+							if terminateablePod != nil {
+								err := r.Delete(ctx, terminateablePod, client.PropagationPolicy(metav1.DeletePropagationBackground))
+								if err != nil {
+									return ctrl.Result{}, err
+								}
 							}
 						}
 					}
@@ -186,8 +209,31 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AutoScaledAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, "status.phase", func(rawObj client.Object) []string {
+		pod := rawObj.(*corev1.Pod)
+		return []string{string(pod.Status.Phase)}
+	}); err != nil {
+		return err
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, jobOwnerKey, func(rawObj client.Object) []string {
+		pod := rawObj.(*corev1.Pod)
+		owner := metav1.GetControllerOf(pod)
+		if owner == nil {
+			return nil
+		}
+		if owner.APIVersion != apscalerv1.GroupVersion.String() || owner.Kind != "AutoScaledAgent" {
+			return nil
+		}
+
+		return []string{owner.Name}
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&apscalerv1.AutoScaledAgent{}).
+		Owns(&corev1.Pod{}).
 		Complete(r)
 }
 
@@ -209,32 +255,25 @@ func (r *AutoScaledAgentReconciler) getAzurePat(ctx context.Context, req ctrl.Re
 	}
 }
 
-func (r *AutoScaledAgentReconciler) getRunningPods(ctx context.Context, req ctrl.Request) ([]corev1.Pod, error) {
-	// Note: we use Field selectors (https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/)
-	// and even "chained" selectors use AND (instead of OR), so we need to make 2 queries
-	runningPodList := &corev1.PodList{}
-	opts := []client.ListOption{
-		client.InNamespace(req.NamespacedName.Namespace),
-		client.MatchingFields{jobOwnerKey: req.Name},
-		client.MatchingFields{"status.phase": "Running"},
+func (r *AutoScaledAgentReconciler) getPodsWithPhases(ctx context.Context, req ctrl.Request, phases []string) ([]corev1.Pod, error) {
+	var allPods []corev1.Pod
+
+	for _, phase := range phases {
+		// Note: we use Field selectors (https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/)
+		// but even "chained" selectors use AND (instead of OR), so we need to make 2 queries
+		podList := &corev1.PodList{}
+		opts := []client.ListOption{
+			client.InNamespace(req.NamespacedName.Namespace),
+			client.MatchingFields{jobOwnerKey: req.Name},
+			client.MatchingFields{"status.phase": phase},
+		}
+		if err := r.List(ctx, podList, opts...); err != nil {
+			return nil, err
+		}
+
+		allPods = append(allPods, podList.Items...)
 	}
 
-	if err := r.List(ctx, runningPodList, opts...); err != nil {
-		return nil, err
-	}
-
-	pendingPodList := &corev1.PodList{}
-	optsPending := []client.ListOption{
-		client.InNamespace(req.NamespacedName.Namespace),
-		client.MatchingFields{jobOwnerKey: req.Name},
-		client.MatchingFields{"status.phase": "Pending"},
-	}
-
-	if err := r.List(ctx, pendingPodList, optsPending...); err != nil {
-		return nil, err
-	}
-
-	allPods := append(runningPodList.Items, pendingPodList.Items...)
 	return allPods, nil
 }
 
@@ -308,7 +347,7 @@ func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, agent *aps
 func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, agent *apscalerv1.AutoScaledAgent,
 	podTemplateSpec *corev1.PodTemplateSpec, capabilities *map[string]string) error {
 	logger := log.FromContext(ctx)
-	podName := fmt.Sprintf("%s-%d", agent.Name, service.GenerateRandomString())
+	podName := fmt.Sprintf("%s-%s", agent.Name, service.GenerateRandomString())
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -327,16 +366,48 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, agent *apsc
 		pod.Labels[k] = v
 	}
 
+	// Disallow K8s to restart the Pod, just because the agent container finished (with error or successfully)
+	pod.Spec.RestartPolicy = corev1.RestartPolicyNever
+
 	capabilitiesStr := service.GetSortedStringificationOfCapabilitiesMap(capabilities)
 	pod.Annotations[service.CapabilitiesAnnotationName] = capabilitiesStr
 
-	if extraAgentContainers, exists := (*capabilities)[service.ExtraAgentContainersAnnotationKey]; exists {
-		extraAgentContainerDefs, err := service.ParseExtraAgentContainerDefinition(extraAgentContainers)
+	// Set env vars: AZP_AGENT_NAME, AZP_URL, AZP_POOL and AZP_TOKEN
+	azureDevOpsAgentContainer := &pod.Spec.Containers[0]
+	azureDevOpsAgentContainer.Env = append(azureDevOpsAgentContainer.Env, corev1.EnvVar{
+		Name:  "AZP_AGENT_NAME",
+		Value: podName,
+	})
+	azureDevOpsAgentContainer.Env = append(azureDevOpsAgentContainer.Env, corev1.EnvVar{
+		Name:  "AZP_URL",
+		Value: agent.Spec.OrganizationUrl,
+	})
+	azureDevOpsAgentContainer.Env = append(azureDevOpsAgentContainer.Env, corev1.EnvVar{
+		Name:  "AZP_POOL",
+		Value: agent.Spec.PoolName,
+	})
+	azureDevOpsAgentContainer.Env = append(azureDevOpsAgentContainer.Env, corev1.EnvVar{
+		Name: "AZP_TOKEN",
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: agent.Spec.PersonalAccessTokenSecretName},
+				Key:                  "pat",
+			},
+		},
+	})
+
+	if extraAgentContainersStr, exists := (*capabilities)[service.ExtraAgentContainersAnnotationKey]; exists {
+		extraAgentContainerDefs, err := service.ParseExtraAgentContainerDefinition(extraAgentContainersStr)
 		if err != nil {
 			return err
 		}
 		if len(extraAgentContainerDefs) > 0 {
 			pod.Spec.Containers = append(pod.Spec.Containers, extraAgentContainerDefs...)
+			azureDevOpsAgentContainer = &pod.Spec.Containers[0]
+			azureDevOpsAgentContainer.Env = append(azureDevOpsAgentContainer.Env, corev1.EnvVar{
+				Name:  service.ExtraAgentContainersAnnotationKey,
+				Value: extraAgentContainersStr,
+			})
 		}
 	}
 
@@ -350,13 +421,135 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, agent *apsc
 }
 
 // getTerminateablePod returns the first Pod object, for which a "kubectl exec
-// <podname> pgrep -l Agent.Worker | wc -l" returns 0 lines, indicating that the
+// <podname> pgrep -l Agent.Worker | wc -l" returns "0", indicating that the
 // agent in the pod is idle (and thus safe to terminate). Errors are swallowed.
 // Note that we need to know the container name, but we assume that the first
 // container of the respective podspec is always the Azure DevOps Agent container
 func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context, pods *map[string][]corev1.Pod) (*corev1.Pod, error) {
-	//_ := log.FromContext(ctx) TODO implement, see https://github.com/kubernetes-sigs/kubebuilder/issues/803
+	//_ := log.FromContext(ctx)
+	for _, pods := range *pods {
+		for _, pod := range pods {
+			agentContainerName := pod.Spec.Containers[0].Name
+			cmd := []string{"sh", "-c", "pgrep -l Agent.Worker | wc -l"}
+			// TODO differentiate the errors somehow - we only want to "swallow" errors where the pod no longer exists,
+			// but still return errors e.g. when K8s RBAC is lacking
+			if stdout, _, err := r.execCommandInPod(pod.Namespace, pod.Name, agentContainerName, cmd); err == nil {
+				if stdout == "0\n" {
+					return &pod, nil
+				}
+			}
+		}
+	}
 	return nil, nil
+}
+
+// deleteTerminatedAgentPods deletes terminated Azure DevOps agent pods, except
+// for the <maxPodsToKeep> most recently started pods
+func (r *AutoScaledAgentReconciler) deleteTerminatedAgentPods(ctx context.Context, req ctrl.Request,
+	maxPodsToKeep int32) error {
+	terminatedPods, err := r.getPodsWithPhases(ctx, req, []string{"Succeeded", "Failed"})
+	if err != nil {
+		return err
+	}
+
+	if len(terminatedPods) > int(maxPodsToKeep) {
+		sort.Slice(terminatedPods, func(i, j int) bool {
+			return terminatedPods[i].Status.StartTime.Time.Before(terminatedPods[j].Status.StartTime.Time)
+		})
+
+		for i := 0; i < len(terminatedPods)-int(maxPodsToKeep); i++ {
+			terminatedPod := terminatedPods[i]
+			err := r.Delete(ctx, &terminatedPod, client.PropagationPolicy(metav1.DeletePropagationBackground))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// terminatedFinishedAgentPods terminates agent pods (without deleting them), so
+// that one can still access the logs of all the containers in the terminated
+// pods (to diagnose problems). Basically, once an Azure Pipelines job has
+// completed, the first container (that runs the agent) will be terminated, but
+// if the pod has any other containers defined (statically in the pod spec, or by
+// using the ExtraAgentContainers feature), these pods are likely still running,
+// and thus the Pod is also still in a "running" phase.
+// terminatedFinishedAgentPods() terminates those extra containers (which results
+// in the Pod being "Terminated") by changing the container's image to some
+// non-existent image, which makes Kubernetes try to restart the container: the
+// container is terminated but not really restarted, because of the image pull
+// error. However, the container's logs seem to be preserved.
+func (r *AutoScaledAgentReconciler) terminatedFinishedAgentPods(ctx context.Context, req ctrl.Request) error {
+	logger := log.FromContext(ctx)
+	runningPods, err := r.getPodsWithPhases(ctx, req, []string{"Running"})
+	if err != nil {
+		return err
+	}
+
+	for _, runningPod := range runningPods {
+		if len(runningPod.Spec.Containers) > 1 {
+
+			agentContainerHasTerminated := runningPod.Status.ContainerStatuses[0].State.Terminated != nil
+			if agentContainerHasTerminated {
+				var containerIndicesToTerminate []int
+				for i := 1; i < len(runningPod.Spec.Containers); i++ {
+					if runningPod.Status.ContainerStatuses[i].State.Running != nil {
+						containerIndicesToTerminate = append(containerIndicesToTerminate, i)
+					}
+				}
+
+				if len(containerIndicesToTerminate) > 0 {
+					logger.Info("Found containers to terminate")
+					for _, containerIndex := range containerIndicesToTerminate {
+						containerImage := runningPod.Spec.Containers[containerIndex].Image
+						nonExistentImage := containerImage + "does-not-exist-for-sure"
+						runningPod.Spec.Containers[containerIndex].Image = nonExistentImage
+						err = r.Update(ctx, &runningPod)
+						if err != nil {
+							return err
+						}
+					}
+				}
+			}
+
+		}
+	}
+	return nil
+}
+
+func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, containerName string, command []string) (string, string, error) {
+	// See https://github.com/kubernetes-sigs/kubebuilder/issues/803 for pointers
+	req := r.RESTClient.Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(podNamespace).
+		SubResource("exec").
+		Param("container", containerName).
+		VersionedParams(&corev1.PodExecOptions{
+			Command: command,
+			Stdin:   false,
+			Stdout:  true,
+			Stderr:  true,
+		}, runtime.NewParameterCodec(r.Scheme))
+
+	var stdout, stderr bytes.Buffer
+	exec, err := remotecommand.NewSPDYExecutor(r.RESTConfig, "POST", req.URL())
+	if err != nil {
+		return "", "", err
+	}
+
+	err = exec.Stream(remotecommand.StreamOptions{
+		Stdin:  nil,
+		Stdout: &stdout,
+		Stderr: &stderr,
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	return stdout.String(), stderr.String(), nil
 }
 
 //TODO need to document that you need to use "shareProcessNamespace" in the pod
@@ -370,3 +563,18 @@ func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context, pod
 // disrupted (see https://kubernetes.io/docs/concepts/workloads/pods/disruptions/#voluntary-and-involuntary-disruptions),
 // e.g. when draining a node. We want to avoid disruption while the agent works on a job, otherwise we don't care
 // However, it might happen that the controller is too slow to create a new PodDisruptionBudget object
+
+/*
+TODOs:
+
+- Commit latest changes, then change commit author
+- Test whether maxcount behavior works properly
+- Test BuildKit build in Docker-based K8s cluster
+- Test ExtraAgentContainer, including helper tool
+- Test normal demands
+- Add more logging
+- Test the controller to be running as pod rather than on the macOS host
+- Build Helm chart
+- Update documentation
+- Publish Helm chart in some format (as e.g. ChartMuseum Repo, or OCI artifact in GHCR)
+*/

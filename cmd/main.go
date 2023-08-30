@@ -18,7 +18,11 @@ package main
 
 import (
 	"flag"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"os"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -88,9 +92,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create a RESTClient and pass it to the controller
+	// more to see: https://github.com/kubernetes-sigs/kubebuilder/issues/803
+	gvk := schema.GroupVersionKind{
+		Group:   "",
+		Version: "v1",
+		Kind:    "Pod",
+	}
+
+	restClient, err := apiutil.RESTClientForGVK(gvk, false, mgr.GetConfig(),
+		serializer.NewCodecFactory(mgr.GetScheme()), mgr.GetHTTPClient())
+	if err != nil {
+		setupLog.Error(err, "unable to create REST client")
+	}
+
 	if err = (&controller.AutoScaledAgentReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:     mgr.GetClient(),
+		RESTClient: restClient,
+		RESTConfig: mgr.GetConfig(),
+		Scheme:     mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AutoScaledAgent")
 		os.Exit(1)

@@ -1,0 +1,102 @@
+apiVersion: azurepipelines.k8s.scaler.io/v1
+kind: AutoScaledAgent
+metadata:
+  labels:
+    app.kubernetes.io/name: autoscaledagent
+    app.kubernetes.io/instance: autoscaledagent-sample
+    app.kubernetes.io/part-of: azure-pipelines-k8s-agent-scaler
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: azure-pipelines-k8s-agent-scaler
+  name: autoscaledagent-sample
+spec:
+  poolName: shark-marius-operator-test
+  organizationUrl: https://dev.azure.com/FOO
+  personalAccessTokenSecretName: azure-pat
+  maxPodsToKeep: 5
+  podsWithCapabilities:
+    - capabilities: { }
+      minCount: 1
+      maxCount: 3
+      podTemplateSpec:
+        spec:
+          imagePullSecrets: [ ]
+          shareProcessNamespace: true  # needed to be able to use the SAME(!) preStop hook in all containers
+          containers:
+            - name: azure-pipelines-agent
+              image: mshekow/azure-pipelines-agent:local
+              # TODO only for local use the default pull policy - in production, use this: imagePullPolicy: Always
+              args:
+                - "--once"
+              resources:
+                requests:
+                  memory: 500Mi
+                limits:
+                  memory: 500Mi
+              volumeMounts:
+                - mountPath: /azp/_work
+                  name: workspace
+              # Note: the operator automatically sets AZP_AGENT_NAME, AZP_URL, AZP_POOL and AZP_TOKEN (from the secret)
+              env: [ ]
+              lifecycle:
+                preStop:
+                  exec:
+                    command: [ "/bin/sh", "-c", "while [ $(pgrep -l Agent.Worker | wc -l) -ne 0 ]; do sleep 1; done" ]
+            - name: buildkit  # from https://github.com/moby/buildkit/blob/master/examples/kubernetes/pod.rootless.yaml
+              image: moby/buildkit:master-rootless
+              args:
+                - --oci-worker-no-process-sandbox
+              imagePullPolicy: Always
+              resources:
+                requests:
+                  memory: 1Gi
+                limits:
+                  memory: 4Gi
+              workingDir: /azp/_work
+              securityContext:
+                seccompProfile:
+                  type: Unconfined
+                # To change UID/GID, you need to rebuild the image
+                runAsUser: 1000
+                runAsGroup: 1000
+              volumeMounts:
+                - mountPath: /azp/_work
+                  name: workspace
+              lifecycle:
+                preStop:
+                  exec:
+                    command: [ "sudo /bin/sh", "-c", "while [ $(pgrep -l Agent.Worker | wc -l) -ne 0 ]; do sleep 1; done" ]
+          nodeSelector: { }
+          tolerations: [ ]
+          volumes:
+            - name: workspace
+              emptyDir: { }
+    - capabilities:
+        Vanilla: "Sky"
+      minCount: 0
+      maxCount: 3
+      podTemplateSpec:
+        spec:
+          imagePullSecrets: [ ]
+          containers:
+            - name: azure-pipelines-agent
+              image: mshekow/azure-pipelines-agent:local
+              # TODO only for local use the default pull policy - in production, use this: imagePullPolicy: Always
+              args:
+                - "--once"
+              resources:
+                requests:
+                  memory: 500Mi
+                limits:
+                  memory: 500Mi
+              volumeMounts:
+                - mountPath: /azp/_work
+                  name: workspace
+              # Note: the operator automatically sets AZP_AGENT_NAME, AZP_URL, AZP_POOL and AZP_TOKEN (from the secret)
+              env: [ ]
+              lifecycle:
+                preStop:
+                  exec:
+                    command: [ "/bin/sh", "-c", "while [ $(pgrep -l Agent.Worker | wc -l) -ne 0 ]; do sleep 1; done" ]
+          volumes:
+            - name: workspace
+              emptyDir: { }

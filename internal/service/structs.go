@@ -167,6 +167,9 @@ func (pjc *PendingJobsContainer) AddJobRequest(jobRequestFromApi *AzurePipelines
 	// Convert Azure Pipelines demand-strings (such as "myCustomCapability" or "Foo -equals bar") into a map:
 	demandsAsMap := map[string]string{}
 	for _, demandString := range jobRequestFromApi.Demands {
+		if strings.HasPrefix(demandString, "Agent.Version -gtVersion") {
+			continue // It seems that ALL jobs have such kinds of demands, we ignore them
+		}
 		splitStr := strings.Split(demandString, " -equals ")
 		if len(splitStr) == 1 {
 			demandsAsMap[strings.TrimSpace(demandString)] = "1"
@@ -287,7 +290,7 @@ func ParseExtraAgentContainerDefinition(extraAgentContainers string) ([]corev1.C
 					corev1.ResourceMemory: memoryQuantity,
 				},
 			},
-			VolumeMounts: []corev1.VolumeMount{corev1.VolumeMount{
+			VolumeMounts: []corev1.VolumeMount{{
 				Name:      AzureWorkingDirMountName,
 				MountPath: AzureWorkingDirMountPath,
 			}},

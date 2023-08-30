@@ -34,6 +34,11 @@ spec:
           spec:
             description: AutoScaledAgentSpec defines the desired state of AutoScaledAgent
             properties:
+              maxPodsToKeep:
+                default: 5
+                format: int32
+                minimum: 0
+                type: integer
               organizationUrl:
                 description: OrganizationUrl is the HTTPS URL to the organization,
                   e.g. https://dev.azure.com/foobar if you use the SaaS version

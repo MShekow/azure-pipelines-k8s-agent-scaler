@@ -37,6 +37,11 @@ type AutoScaledAgentSpec struct {
 
 	PersonalAccessTokenSecretName string `json:"personalAccessTokenSecretName,omitempty"`
 
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default:=5
+	MaxPodsToKeep *int32 `json:"maxPodsToKeep,omitempty"`
+
 	PodsWithCapabilities []PodsWithCapabilities `json:"podsWithCapabilities,omitempty"`
 }
 
