@@ -9,4 +9,19 @@ metadata:
     app.kubernetes.io/created-by: azure-pipelines-k8s-agent-scaler
   name: autoscaledagent-sample
 spec:
-  # TODO(user): Add fields here
+  poolName: shark-agents-vm-npi
+  organizationUrl: https://dev.azure.com/test
+  personalAccessTokenSecretName: azure-pat
+  podsWithCapabilities:
+    - capabilities:
+        foo: bar
+      minCount: 0
+      maxCount: 1
+      podTemplateSpec:
+#        metadata:
+#          labels:
+#            hallo: welt
+        spec:
+          containers:
+            - name: nginx
+              image: nginx:1.14.2

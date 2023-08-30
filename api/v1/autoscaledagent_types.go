@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -28,8 +29,27 @@ type AutoScaledAgentSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of AutoScaledAgent. Edit autoscaledagent_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// PoolName is the name of the Azure DevOps pool name
+	PoolName string `json:"poolName,omitempty"`
+
+	// OrganizationUrl is the HTTPS URL to the organization, e.g. https://dev.azure.com/foobar if you use the SaaS version
+	OrganizationUrl string `json:"organizationUrl,omitempty"`
+
+	PersonalAccessTokenSecretName string `json:"personalAccessTokenSecretName,omitempty"`
+
+	PodsWithCapabilities []PodsWithCapabilities `json:"podsWithCapabilities,omitempty"`
+}
+
+type PodsWithCapabilities struct {
+	Capabilities map[string]string `json:"capabilities,omitempty"`
+
+	//+kubebuilder:validation:Minimum=0
+	MinCount *int32 `json:"minCount,omitempty"`
+
+	//+kubebuilder:validation:Minimum=0
+	MaxCount *int32 `json:"maxCount,omitempty"`
+
+	PodTemplateSpec corev1.PodTemplateSpec `json:"podTemplateSpec"`
 }
 
 // AutoScaledAgentStatus defines the observed state of AutoScaledAgent
