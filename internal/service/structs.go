@@ -137,7 +137,7 @@ func (m *InexactMatchStringMap) IsInexactMatch(input *map[string]string) bool {
 	return true
 }
 
-// GetSortedStringificationOfCapabilitiesMap returns a stringified map, of the form <key1>=<value1>,<key2>=<value2>,...
+// GetSortedStringificationOfMap returns a stringified map, of the form <key1>=<value1>,<key2>=<value2>,...
 func (m *InexactMatchStringMap) GetSortedStringificationOfMap() string {
 	return GetSortedStringificationOfCapabilitiesMap((*map[string]string)(m))
 }
@@ -147,14 +147,14 @@ type PendingJobsWithDemands struct {
 	pendingJobs []PendingJob
 }
 
-type PendingJobsContainer struct {
+type PendingJobsWrapper struct {
 	pendingJobs []PendingJobsWithDemands
 }
 
-func (pjc *PendingJobsContainer) GetInexactMatch(capabilities *map[string]string) *map[string][]PendingJob {
+func (pjw *PendingJobsWrapper) GetInexactMatch(capabilities *map[string]string) *map[string][]PendingJob {
 	result := map[string][]PendingJob{}
 
-	for _, pendingJob := range pjc.pendingJobs {
+	for _, pendingJob := range pjw.pendingJobs {
 		if pendingJob.demands.IsInexactMatch(capabilities) {
 			result[pendingJob.demands.GetSortedStringificationOfMap()] = pendingJob.pendingJobs
 		}
@@ -163,9 +163,9 @@ func (pjc *PendingJobsContainer) GetInexactMatch(capabilities *map[string]string
 	return &result
 }
 
-func (pjc *PendingJobsContainer) AddJobRequest(jobRequestFromApi *AzurePipelinesApiJobRequest) {
+func (pjw *PendingJobsWrapper) AddJobRequest(jobRequestFromApi *AzurePipelinesApiJobRequest) {
 	// Convert Azure Pipelines demand-strings (such as "myCustomCapability" or "Foo -equals bar") into a map:
-	demandsAsMap := map[string]string{}
+	demandsAsMap := InexactMatchStringMap{}
 	for _, demandString := range jobRequestFromApi.Demands {
 		if strings.HasPrefix(demandString, "Agent.Version -gtVersion") {
 			continue // It seems that ALL jobs have such kinds of demands, we ignore them
@@ -188,9 +188,9 @@ func (pjc *PendingJobsContainer) AddJobRequest(jobRequestFromApi *AzurePipelines
 	// only append to the existing "pendingJobs" slice
 
 	foundExistingEntry := false
-	for _, pj := range pjc.pendingJobs {
+	for i, pj := range pjw.pendingJobs {
 		if reflect.DeepEqual(pj.demands, demandsAsMap) {
-			pj.pendingJobs = append(pj.pendingJobs, pendingJob)
+			(&pjw.pendingJobs[i]).pendingJobs = append((&pjw.pendingJobs[i]).pendingJobs, pendingJob)
 			foundExistingEntry = true
 			break
 		}
@@ -201,7 +201,7 @@ func (pjc *PendingJobsContainer) AddJobRequest(jobRequestFromApi *AzurePipelines
 			demands:     demandsAsMap,
 			pendingJobs: []PendingJob{pendingJob},
 		}
-		pjc.pendingJobs = append(pjc.pendingJobs, pjWithDemands)
+		pjw.pendingJobs = append(pjw.pendingJobs, pjWithDemands)
 	}
 }
 
@@ -210,22 +210,22 @@ type RunningPodsWithCapabilities struct {
 	runningPods  []corev1.Pod
 }
 
-type RunningPodsContainer struct {
+type RunningPodsWrapper struct {
 	runningPods []RunningPodsWithCapabilities
 }
 
-func NewRunningPodsContainer(runningPods []corev1.Pod) *RunningPodsContainer {
-	rpc := RunningPodsContainer{}
+func NewRunningPodsWrapper(runningPods []corev1.Pod) *RunningPodsWrapper {
+	rpw := RunningPodsWrapper{}
 
 	for _, pod := range runningPods {
 		// podCapabilitiesStr is something like: foo=bar;qux=1;hello=world
 		podCapabilitiesStr := pod.Annotations[CapabilitiesAnnotationName] // TODO check for error?
-		podCapabilitiesMap := GetCapabilitiesMapFromString(podCapabilitiesStr)
+		podCapabilitiesMap := (*InexactMatchStringMap)(GetCapabilitiesMapFromString(podCapabilitiesStr))
 
 		foundExistingEntry := false
-		for _, rp := range rpc.runningPods {
-			if reflect.DeepEqual(rp.capabilities, podCapabilitiesMap) {
-				rp.runningPods = append(rp.runningPods, pod)
+		for i, rp := range rpw.runningPods {
+			if reflect.DeepEqual(&rp.capabilities, podCapabilitiesMap) {
+				(&rpw.runningPods[i]).runningPods = append((&rpw.runningPods[i]).runningPods, pod)
 				foundExistingEntry = true
 				break
 			}
@@ -236,17 +236,17 @@ func NewRunningPodsContainer(runningPods []corev1.Pod) *RunningPodsContainer {
 				capabilities: *podCapabilitiesMap,
 				runningPods:  []corev1.Pod{pod},
 			}
-			rpc.runningPods = append(rpc.runningPods, rpWithCapabilities)
+			rpw.runningPods = append(rpw.runningPods, rpWithCapabilities)
 		}
 	}
 
-	return &rpc
+	return &rpw
 }
 
-func (rpc *RunningPodsContainer) GetInexactMatch(capabilities *map[string]string) *map[string][]corev1.Pod {
+func (rpw *RunningPodsWrapper) GetInexactMatch(capabilities *map[string]string) *map[string][]corev1.Pod {
 	result := map[string][]corev1.Pod{}
 
-	for _, runningPod := range rpc.runningPods {
+	for _, runningPod := range rpw.runningPods {
 		if runningPod.capabilities.IsInexactMatch(capabilities) {
 			result[runningPod.capabilities.GetSortedStringificationOfMap()] = runningPod.runningPods
 		}

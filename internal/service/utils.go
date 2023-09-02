@@ -20,8 +20,8 @@ import (
 var dummyAgentNames []string
 
 func CreateHTTPClient() *http.Client {
-	// default the timeout to 300ms
-	timeout := 300 * time.Millisecond
+	// Configure default timeout
+	timeout := 2 * time.Second
 	httpClient := &http.Client{
 		Timeout: timeout,
 	}
@@ -29,7 +29,7 @@ func CreateHTTPClient() *http.Client {
 }
 
 func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClient *http.Client,
-	spec *apscalerv1.AutoScaledAgentSpec) (*PendingJobsContainer, error) {
+	spec *apscalerv1.AutoScaledAgentSpec) (*PendingJobsWrapper, error) {
 
 	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/jobrequests", spec.OrganizationUrl, poolId)
 
@@ -64,7 +64,7 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 		return nil, err
 	}
 
-	pendingJobs := PendingJobsContainer{}
+	pendingJobs := PendingJobsWrapper{}
 
 	for _, jobRequestFromApi := range jobRequestsFromApi.Value {
 		if jobRequestFromApi.Result != nil {
@@ -77,12 +77,13 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 	return &pendingJobs, nil
 }
 
-// Registers one dummy agent for each PodsWithCapabilities, as otherwise Azure
-// DevOps would immediately abort a pipeline
+// CreateOrUpdateDummyAgents registers one dummy agent for each
+// PodsWithCapabilities, as otherwise Azure DevOps would immediately abort a
+// pipeline
 func CreateOrUpdateDummyAgents(ctx context.Context, poolId int64, azurePat string, httpClient *http.Client,
 	spec *apscalerv1.AutoScaledAgentSpec) ([]string, error) {
 	if len(dummyAgentNames) > 0 {
-		return dummyAgentNames, nil
+		return dummyAgentNames, nil // TODO this needs to be checked individually for each AutoScaledAgent CR, not just globally
 	}
 	logger := log.FromContext(ctx)
 

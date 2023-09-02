@@ -31,6 +31,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -90,16 +91,19 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	httpClient := service.CreateHTTPClient()
 
 	azurePat, err := r.getAzurePat(ctx, req, &autoScaledAgent.Spec)
-
-	poolId, err := getPoolIdFromName(ctx, azurePat, httpClient, &autoScaledAgent.Spec)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	fmt.Printf("Poolname %d", poolId)
+	poolId, err := getPoolIdFromName(ctx, azurePat, httpClient, &autoScaledAgent.Spec)
+	if err != nil {
+		logger.Info("getPoolIdFromName failed")
+		return ctrl.Result{}, err
+	}
 
 	_, err = service.CreateOrUpdateDummyAgents(ctx, poolId, azurePat, httpClient, &autoScaledAgent.Spec)
 	if err != nil {
+		logger.Info("CreateOrUpdateDummyAgents() failed")
 		return ctrl.Result{}, err
 	}
 	// TODO call another method that deletes any offline agent (with name starting
@@ -109,15 +113,17 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	pendingJobs, err := service.GetPendingJobs(ctx, poolId, azurePat, httpClient, &autoScaledAgent.Spec)
 	if err != nil {
+		logger.Info("GetPendingJobs() failed")
 		return ctrl.Result{}, err
 	}
 
 	runningPodsRaw, err := r.getPodsWithPhases(ctx, req, []string{"Running", "Pending"})
 	if err != nil {
+		logger.Info("getPodsWithPhases(): unable to get Running/Pending pods")
 		return ctrl.Result{}, err
 	}
 
-	runningPods := service.NewRunningPodsContainer(runningPodsRaw)
+	runningPods := service.NewRunningPodsWrapper(runningPodsRaw)
 
 	for _, podsWithCapabilities := range autoScaledAgent.Spec.PodsWithCapabilities {
 		matchingPods := runningPods.GetInexactMatch(&podsWithCapabilities.Capabilities)
@@ -129,8 +135,10 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			agentsToCreate := *podsWithCapabilities.MinCount - matchingPodsCount
 			if err := r.createAgents(ctx, &autoScaledAgent, agentsToCreate, &podsWithCapabilities.PodTemplateSpec,
 				&podsWithCapabilities.Capabilities); err != nil {
+				logger.Info("failed to create agent because of minCount")
 				return ctrl.Result{}, err
 			}
+			logger.Info("successfully created agents because of minCount", "agentsToCreate", agentsToCreate)
 			continue // Do not run the remaining code, to avoid the risk of running conflicting logic in one iteration
 		}
 
@@ -160,13 +168,16 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 					matchingJobCount := len((*matchingJobs)[capabilitiesStr])
 					if len(pods) > service.Max(matchingJobCount, int(*podsWithCapabilities.MinCount)) {
 						if terminateablePod, err := r.getTerminateablePod(ctx, matchingPods); err != nil {
+							logger.Info("unable to get terminateable pod (upper code path)")
 							return ctrl.Result{}, err
 						} else {
 							if terminateablePod != nil {
 								err := r.Delete(ctx, terminateablePod, client.PropagationPolicy(metav1.DeletePropagationBackground))
 								if err != nil {
+									logger.Info("unable to get terminate pod", "podName", terminateablePod.Name)
 									return ctrl.Result{}, err
 								}
+								logger.Info("successfully terminated pod", "podName", terminateablePod.Name)
 							}
 						}
 					}
@@ -183,8 +194,10 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 					podCapabilitiesMap := service.GetCapabilitiesMapFromString(capabilitiesStr)
 					if err := r.createAgents(ctx, &autoScaledAgent, 1, &podsWithCapabilities.PodTemplateSpec,
 						podCapabilitiesMap); err != nil {
+						logger.Info("unable to create agent for job", "podCapabilitiesMap", podCapabilitiesMap)
 						return ctrl.Result{}, err
 					}
+					logger.Info("successfully created agent for job", "podCapabilitiesMap", podCapabilitiesMap)
 
 					maxAgentsAllowedToCreate -= 1
 				}
@@ -194,12 +207,15 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			// after having run a job) it can happen in specific situations, e.g. when the user reduced the maxCount
 			// in a pod spec in an AutoScaledAgentSpec CR
 			if terminateablePod, err := r.getTerminateablePod(ctx, matchingPods); err != nil {
+				logger.Info("unable to get terminateable pod (lower code path)")
 				return ctrl.Result{}, err
 			} else {
 				err := r.Delete(ctx, terminateablePod, client.PropagationPolicy(metav1.DeletePropagationBackground))
 				if err != nil {
+					logger.Info("unable to get terminate pod (lower code path)", "podName", terminateablePod.Name)
 					return ctrl.Result{}, err
 				}
+				logger.Info("successfully terminated pod (lower code path)", "podName", terminateablePod.Name)
 			}
 		}
 	}
@@ -242,13 +258,13 @@ func (r *AutoScaledAgentReconciler) getAzurePat(ctx context.Context, req ctrl.Re
 	logger := log.FromContext(ctx)
 	var patSecret corev1.Secret
 	if err := r.Get(ctx, types.NamespacedName{Name: agentSpec.PersonalAccessTokenSecretName, Namespace: req.Namespace}, &patSecret); err != nil {
-		logger.Error(err, "unable to fetch Secret", "name", agentSpec.PersonalAccessTokenSecretName)
+		logger.Error(err, "getAzurePat(): unable to fetch Secret", "secretName", agentSpec.PersonalAccessTokenSecretName)
 		return "", err
 	}
 
 	if pat, ok := patSecret.Data["pat"]; !ok {
 		err := errors.New("data key 'pat' is missing")
-		logger.Error(err, "data key 'pat' is missing")
+		logger.Error(err, "getAzurePat(): data key 'pat' is missing in configured secret", "secretName", agentSpec.PersonalAccessTokenSecretName)
 		return "", err
 	} else {
 		return string(pat), nil
@@ -444,11 +460,14 @@ func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context, pod
 }
 
 // deleteTerminatedAgentPods deletes terminated Azure DevOps agent pods, except
-// for the <maxPodsToKeep> most recently started pods
+// for the <maxPodsToKeep> most recently started pods, which are kept for
+// debugging purposes
 func (r *AutoScaledAgentReconciler) deleteTerminatedAgentPods(ctx context.Context, req ctrl.Request,
 	maxPodsToKeep int32) error {
+	logger := log.FromContext(ctx)
 	terminatedPods, err := r.getPodsWithPhases(ctx, req, []string{"Succeeded", "Failed"})
 	if err != nil {
+		logger.Error(err, "deleteTerminatedAgentPods(): unable to get Succeeded/Failed pods")
 		return err
 	}
 
@@ -461,8 +480,10 @@ func (r *AutoScaledAgentReconciler) deleteTerminatedAgentPods(ctx context.Contex
 			terminatedPod := terminatedPods[i]
 			err := r.Delete(ctx, &terminatedPod, client.PropagationPolicy(metav1.DeletePropagationBackground))
 			if err != nil {
+				logger.Error(err, "deleteTerminatedAgentPods(): failed deleting a terminated pod")
 				return err
 			}
+			logger.Info("deleteTerminatedAgentPods(): deleted terminated pod", "podName", terminatedPod.Name)
 		}
 	}
 
@@ -477,7 +498,7 @@ func (r *AutoScaledAgentReconciler) deleteTerminatedAgentPods(ctx context.Contex
 // using the ExtraAgentContainers feature), these pods are likely still running,
 // and thus the Pod is also still in a "running" phase.
 // terminatedFinishedAgentPods() terminates those extra containers (which results
-// in the Pod being "Terminated") by changing the container's image to some
+// in the Pod phase being "Terminated") by changing the container's image to some
 // non-existent image, which makes Kubernetes try to restart the container: the
 // container is terminated but not really restarted, because of the image pull
 // error. However, the container's logs seem to be preserved.
@@ -485,12 +506,12 @@ func (r *AutoScaledAgentReconciler) terminatedFinishedAgentPods(ctx context.Cont
 	logger := log.FromContext(ctx)
 	runningPods, err := r.getPodsWithPhases(ctx, req, []string{"Running"})
 	if err != nil {
+		logger.Error(err, "terminatedFinishedAgentPods(): unable to get Running pods")
 		return err
 	}
 
 	for _, runningPod := range runningPods {
 		if len(runningPod.Spec.Containers) > 1 {
-
 			agentContainerHasTerminated := runningPod.Status.ContainerStatuses[0].State.Terminated != nil
 			if agentContainerHasTerminated {
 				var containerIndicesToTerminate []int
@@ -501,14 +522,18 @@ func (r *AutoScaledAgentReconciler) terminatedFinishedAgentPods(ctx context.Cont
 				}
 
 				if len(containerIndicesToTerminate) > 0 {
-					logger.Info("Found containers to terminate")
+					logger.Info("Found containers to terminate", "podName", runningPod.Name, "containerIndicesToTerminate", containerIndicesToTerminate)
 					for _, containerIndex := range containerIndicesToTerminate {
 						containerImage := runningPod.Spec.Containers[containerIndex].Image
-						nonExistentImage := containerImage + "does-not-exist-for-sure"
-						runningPod.Spec.Containers[containerIndex].Image = nonExistentImage
-						err = r.Update(ctx, &runningPod)
-						if err != nil {
-							return err
+						if !strings.Contains(containerImage, service.NonExistentContainerImageSuffix) {
+							nonExistentImage := containerImage + service.NonExistentContainerImageSuffix
+							runningPod.Spec.Containers[containerIndex].Image = nonExistentImage
+							err = r.Update(ctx, &runningPod)
+							if err != nil {
+								logger.Error(err, "terminatedFinishedAgentPods(): unable to change image", "nonExistentImage", nonExistentImage)
+								return err
+							}
+							logger.Info("updated container image to terminate pod", "containerIndex", containerIndex, "nonExistentImage", nonExistentImage)
 						}
 					}
 				}
@@ -567,14 +592,12 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 /*
 TODOs:
 
-- Commit latest changes, then change commit author
-- Test whether maxcount behavior works properly
-- Test BuildKit build in Docker-based K8s cluster
-- Test ExtraAgentContainer, including helper tool
-- Test normal demands
-- Add more logging
 - Test the controller to be running as pod rather than on the macOS host
 - Build Helm chart
-- Update documentation
 - Publish Helm chart in some format (as e.g. ChartMuseum Repo, or OCI artifact in GHCR)
+- Test normal demands
+- Simplify reconcile algorithm
+- Update documentation
+- Implement magic, reusable volumes
+
 */
