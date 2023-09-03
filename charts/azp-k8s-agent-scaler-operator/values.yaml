@@ -4,16 +4,18 @@ installCRDs: true  # used in Chart.yaml
 
 replicaCount: 1
 
-#image:
-#  registry: docker.io
-#  repository: nginx
-#  tag: "" # Overrides the image tag whose default is the chart appVersion.
-#  pullPolicy: IfNotPresent
 image:
-  registry: ""
-  repository: controller
-  tag: "latest"
-  pullPolicy: IfNotPresent
+  registry: ghcr.io
+  repository: mshekow/azure-pipelines-k8s-agent-scaler
+  tag: "" # Overrides the image tag whose default is the chart appVersion.
+  pullPolicy: Always
+
+# For local development
+#image:
+#  registry: ""
+#  repository: controller
+#  tag: "latest"
+#  pullPolicy: IfNotPresent
 
 imagePullSecrets: [ ]
 
