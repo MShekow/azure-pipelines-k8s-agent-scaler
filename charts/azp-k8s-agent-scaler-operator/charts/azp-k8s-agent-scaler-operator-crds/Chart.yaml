@@ -1,0 +1,10 @@
+apiVersion: v2
+name: azp-k8s-agent-scaler-operator-crds
+description: CRDs for Azure Pipelines Kubernetes-based agent scaler operator
+home: https://github.com/MShekow/azure-pipelines-k8s-agent-scaler
+
+type: application
+
+version: 0.1.0
+
+appVersion: "0.1.0"  # not used
