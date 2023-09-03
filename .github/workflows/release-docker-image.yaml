@@ -36,7 +36,7 @@ jobs:
             type=raw,value=latest
             type=raw,value={{date 'YYYY.MM.DD'}}
 
-      - name: Push image
+      - name: Build and push image
         uses: docker/build-push-action@v4
         with:
           context: .
