@@ -6,7 +6,7 @@ namespace: azure-pipelines-k8s-agent-scaler-system
 # "wordpress" becomes "alices-wordpress".
 # Note that it should also match with the prefix (text before '-') of the namespace
 # field above.
-namePrefix: azure-pipelines-k8s-agent-scaler-
+namePrefix: azp-k8s-agent-scaler-
 
 # Labels to add to all resources and selectors.
 #labels:
@@ -30,7 +30,7 @@ patchesStrategicMerge:
 # Protect the /metrics endpoint by putting it behind auth.
 # If you want your controller-manager to expose the /metrics
 # endpoint w/o any authn/z, please comment the following line.
-- manager_auth_proxy_patch.yaml
+#- manager_auth_proxy_patch.yaml
 
 
 
