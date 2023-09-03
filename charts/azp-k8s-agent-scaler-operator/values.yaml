@@ -1,16 +1,18 @@
 # Default values for azp-k8s-agent-scaler-operator
 
-# The namespace to install the controller into. Will be created automatically.
-namespace: azp-k8s-agent-scaler
-
 installCRDs: true  # used in Chart.yaml
 
 replicaCount: 1
 
+#image:
+#  registry: docker.io
+#  repository: nginx
+#  tag: "" # Overrides the image tag whose default is the chart appVersion.
+#  pullPolicy: IfNotPresent
 image:
-  registry: docker.io
-  repository: nginx
-  tag: "" # Overrides the image tag whose default is the chart appVersion.
+  registry: ""
+  repository: controller
+  tag: "latest"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: [ ]

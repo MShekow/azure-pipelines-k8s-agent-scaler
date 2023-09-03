@@ -24,7 +24,7 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 
 {{- define "azp-k8s-agent-scaler-operator.image" -}}
-{{- $versionTag := default .Values.image.tag .Chart.AppVersion }}
+{{- $versionTag := default .Chart.AppVersion .Values.image.tag }}
 {{- if .Values.image.registry }}
 {{- printf "%s/%s:%s" .Values.image.registry .Values.image.repository $versionTag }}
 {{- else }}

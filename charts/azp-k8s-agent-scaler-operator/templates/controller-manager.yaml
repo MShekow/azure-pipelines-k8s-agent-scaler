@@ -3,7 +3,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: controller-manager
-  namespace: {{ .Values.namespace }}
   labels:
     {{- include "azp-k8s-agent-scaler-operator.labels" . | nindent 4 }}
 spec:
@@ -31,7 +30,6 @@ spec:
             - /manager
           args:
             - --leader-elect
-          # image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           image: {{ include "azp-k8s-agent-scaler-operator.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: manager
