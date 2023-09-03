@@ -219,7 +219,7 @@ func NewRunningPodsWrapper(runningPods []corev1.Pod) *RunningPodsWrapper {
 
 	for _, pod := range runningPods {
 		// podCapabilitiesStr is something like: foo=bar;qux=1;hello=world
-		podCapabilitiesStr := pod.Annotations[CapabilitiesAnnotationName] // TODO check for error?
+		podCapabilitiesStr := pod.Annotations[CapabilitiesAnnotationName]
 		podCapabilitiesMap := (*InexactMatchStringMap)(GetCapabilitiesMapFromString(podCapabilitiesStr))
 
 		foundExistingEntry := false

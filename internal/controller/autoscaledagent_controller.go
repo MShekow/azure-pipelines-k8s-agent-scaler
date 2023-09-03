@@ -287,7 +287,13 @@ func (r *AutoScaledAgentReconciler) getPodsWithPhases(ctx context.Context, req c
 			return nil, err
 		}
 
-		allPods = append(allPods, podList.Items...)
+		for _, pod := range podList.Items {
+			// only add Azure Pipelines pods that this controller created
+			// (because in the namespace of the CR there might also be other pods, e.g. the controller-manager)
+			if _, exists := pod.Annotations[service.CapabilitiesAnnotationName]; exists {
+				allPods = append(allPods, pod)
+			}
+		}
 	}
 
 	return allPods, nil
@@ -592,7 +598,6 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 /*
 TODOs:
 
-- Test the controller to be running as pod rather than on the macOS host
 - Build Helm chart
 - Publish Helm chart in some format (as e.g. ChartMuseum Repo, or OCI artifact in GHCR)
 - Test normal demands
