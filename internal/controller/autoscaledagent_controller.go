@@ -76,7 +76,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	err := r.deleteTerminatedAgentPods(ctx, req, *autoScaledAgent.Spec.MaxPodsToKeep)
+	err := r.deleteTerminatedAgentPods(ctx, req, *autoScaledAgent.Spec.MaxTerminatedPodsToKeep)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -133,7 +133,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		// is below minCount
 		if matchingPodsCount < *podsWithCapabilities.MinCount {
 			agentsToCreate := *podsWithCapabilities.MinCount - matchingPodsCount
-			if err := r.createAgents(ctx, &autoScaledAgent, agentsToCreate, &podsWithCapabilities.PodTemplateSpec,
+			if err := r.createAgents(ctx, &autoScaledAgent, agentsToCreate, &podsWithCapabilities,
 				&podsWithCapabilities.Capabilities); err != nil {
 				logger.Info("failed to create agent because of minCount")
 				return ctrl.Result{}, err
@@ -192,7 +192,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 					}
 
 					podCapabilitiesMap := service.GetCapabilitiesMapFromString(capabilitiesStr)
-					if err := r.createAgents(ctx, &autoScaledAgent, 1, &podsWithCapabilities.PodTemplateSpec,
+					if err := r.createAgents(ctx, &autoScaledAgent, 1, &podsWithCapabilities,
 						podCapabilitiesMap); err != nil {
 						logger.Info("unable to create agent for job", "podCapabilitiesMap", podCapabilitiesMap)
 						return ctrl.Result{}, err
@@ -356,9 +356,9 @@ func getPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Cl
 }
 
 func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, agent *apscalerv1.AutoScaledAgent, count int32,
-	podTemplateSpec *corev1.PodTemplateSpec, capabilities *map[string]string) error {
+	podsWithCapabilities *apscalerv1.PodsWithCapabilities, capabilities *map[string]string) error {
 	for i := 0; i < int(count); i++ {
-		if err := r.createAgent(ctx, agent, podTemplateSpec, capabilities); err != nil {
+		if err := r.createAgent(ctx, agent, podsWithCapabilities, capabilities); err != nil {
 			return err
 		}
 	}
@@ -367,7 +367,7 @@ func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, agent *aps
 }
 
 func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, agent *apscalerv1.AutoScaledAgent,
-	podTemplateSpec *corev1.PodTemplateSpec, capabilities *map[string]string) error {
+	podsWithCapabilities *apscalerv1.PodsWithCapabilities, capabilities *map[string]string) error {
 	logger := log.FromContext(ctx)
 	podName := fmt.Sprintf("%s-%s", agent.Name, service.GenerateRandomString())
 
@@ -378,13 +378,13 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, agent *apsc
 			Name:        podName,
 			Namespace:   agent.Namespace,
 		},
-		Spec: *podTemplateSpec.Spec.DeepCopy(),
+		Spec: *podsWithCapabilities.PodTemplateSpec.Spec.DeepCopy(),
 	}
-	for k, v := range podTemplateSpec.Annotations {
+	for k, v := range podsWithCapabilities.PodAnnotations {
 		pod.Annotations[k] = v
 	}
 
-	for k, v := range podTemplateSpec.Labels {
+	for k, v := range podsWithCapabilities.PodLabels {
 		pod.Labels[k] = v
 	}
 

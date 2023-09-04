@@ -12,11 +12,13 @@ spec:
   poolName: shark-marius-operator-test
   organizationUrl: https://dev.azure.com/FOO
   personalAccessTokenSecretName: azure-pat
-  maxPodsToKeep: 2
+  maxTerminatedPodsToKeep: 2
   podsWithCapabilities:
     - capabilities: { }
       minCount: 1
-      maxCount: 2
+      maxCount: 3
+      podAnnotations:
+        foo: bar
       podTemplateSpec:
         spec:
           imagePullSecrets: [ ]

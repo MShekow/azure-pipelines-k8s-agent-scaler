@@ -40,7 +40,7 @@ type AutoScaledAgentSpec struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default:=5
-	MaxPodsToKeep *int32 `json:"maxPodsToKeep,omitempty"`
+	MaxTerminatedPodsToKeep *int32 `json:"maxTerminatedPodsToKeep,omitempty"`
 
 	PodsWithCapabilities []PodsWithCapabilities `json:"podsWithCapabilities,omitempty"`
 }
@@ -53,6 +53,10 @@ type PodsWithCapabilities struct {
 
 	//+kubebuilder:validation:Minimum=0
 	MaxCount *int32 `json:"maxCount,omitempty"`
+
+	PodLabels map[string]string `json:"podLabels,omitempty"`
+
+	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
 
 	PodTemplateSpec corev1.PodTemplateSpec `json:"podTemplateSpec"`
 }
