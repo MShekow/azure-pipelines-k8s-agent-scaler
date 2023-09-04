@@ -418,6 +418,13 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, agent *apsc
 		},
 	})
 
+	for key, val := range *capabilities {
+		azureDevOpsAgentContainer.Env = append(azureDevOpsAgentContainer.Env, corev1.EnvVar{
+			Name:  key,
+			Value: val,
+		})
+	}
+
 	if extraAgentContainersStr, exists := (*capabilities)[service.ExtraAgentContainersAnnotationKey]; exists {
 		extraAgentContainerDefs, err := service.ParseExtraAgentContainerDefinition(extraAgentContainersStr)
 		if err != nil {
