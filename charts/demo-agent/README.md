@@ -10,4 +10,3 @@ To install/upgrade the chart (example):
 `helm upgrade --install --namespace azp --create-namespace <your-release-name> demo-agent`
 
 See also the `azure-pipelines.yaml` for a demonstration of how a CI/CD pipeline could look.
-TODO: actually build it!

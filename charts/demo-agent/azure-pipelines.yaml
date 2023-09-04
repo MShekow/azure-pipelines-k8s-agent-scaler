@@ -1,0 +1,44 @@
+trigger:
+  batch: true
+  branches:
+    include:
+      - master
+      - develop
+
+pool:
+  name: your-agent-pool-name
+
+variables:
+  extraAgentContainersDynamic: "ubuntu,docker.io/library/ubuntu:22.04,250m,64Mi"
+
+jobs:
+  # This job demonstrates how to "dynamically" register an agent with an additional container (that is NOT defined in values.yaml of the demo-agent chart)
+  - job: prepare_dynamic_container
+    pool:
+      name: your-agent-pool-name
+      demands: buildkit  # as to match the "capabilities" key of at least one array-element from values.yaml:podsWithCapabilities
+    steps:
+      # Note: you may have to replace arm64 with amd64
+      - script: curl -L https://github.com/MShekow/azure-pipelines-agent-registrator/releases/download/v1.2/azure-pipelines-agent-registrator_1.2_linux_arm64 -o agent-registrator && chmod +x agent-registrator
+        displayName: download agent registrator binary
+      - script: >
+          ./agent-registrator
+          -organization-url $(System.CollectionUri)
+          -pool-name your-agent-pool-name
+          -pat YOUR-PAT
+          -agent-name-prefix dummy-agent
+          -capabilities 'buildkit=1;ExtraAgentContainers=$(extraAgentContainersDynamic)'
+        displayName: register dynamic agent demand
+  - job: use_dynamic_container_job
+    dependsOn: prepare_dynamic_container
+    pool:
+      name: your-agent-pool-name
+      demands:
+        - buildkit
+        - ExtraAgentContainers -equals $(extraAgentContainersDynamic)
+    steps:
+      - script: >-
+          ./execContainer.sh -n ubuntu -c 'echo hello world'
+        workingDirectory: $(Agent.WorkFolder)  # execContainer.sh is not part of the Git repo, but of the Docker image
+        displayName: use dynamically-started container
+
