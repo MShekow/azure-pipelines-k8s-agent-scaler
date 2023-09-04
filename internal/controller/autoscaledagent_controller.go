@@ -596,13 +596,14 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 // However, it might happen that the controller is too slow to create a new PodDisruptionBudget object
 
 /*
-TODOs:
+TODOs: (turn into GitHub Issues)
 
-- Build Helm chart
-- Publish Helm chart in some format (as e.g. ChartMuseum Repo, or OCI artifact in GHCR)
-- Test normal demands
-- Simplify reconcile algorithm
+- Create Helm chart that demonstrates how to set up the CR
 - Update documentation
-- Implement magic, reusable volumes
+- Simplify reconcile algorithm
+- Test normal demands
+- Implement reusable cache volumes
+- Set up Renovate Bot
+
 
 */
