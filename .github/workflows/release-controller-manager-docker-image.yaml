@@ -1,4 +1,4 @@
-name: Release Docker image
+name: Release AZP agent Docker image
 
 on:
   workflow_dispatch: { }
@@ -31,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository_owner }}/azp-agent
           tags: |
             type=raw,value=latest
             type=raw,value={{date 'YYYY.MM.DD'}}
@@ -39,7 +39,7 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v4
         with:
-          context: .
+          context: docker-based-agent
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
