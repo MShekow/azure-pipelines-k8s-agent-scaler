@@ -1,0 +1,93 @@
+apiVersion: azurepipelines.k8s.scaler.io/v1
+kind: AutoScaledAgent
+metadata:
+  labels:
+    {{- include "demo-agent.labels" . | nindent 4 }}
+  name: {{ include "demo-agent.fullname" . }}
+spec:
+  poolName: {{ .Values.poolName }}
+  organizationUrl: {{ .Values.organizationUrl }}
+  personalAccessTokenSecretName: azure-pipelines-pat
+  maxTerminatedPodsToKeep: {{ .Values.maxTerminatedPodsToKeep }}
+  podsWithCapabilities:
+    {{- range $podsWithCapabilities := .Values.podsWithCapabilities }}
+    - capabilities:
+        {{- toYaml $podsWithCapabilities.capabilities | nindent 8 }}
+      minCount: {{ $podsWithCapabilities.minCount }}
+      maxCount: {{ $podsWithCapabilities.maxCount }}
+      {{- with $.Values.podAnnotations }}
+      podAnnotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.podLabels }}
+      podLabels:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      podTemplateSpec:
+        spec:
+          {{- with $.Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          shareProcessNamespace: true  # needed to be able to use the SAME(!) preStop lifecycle hook in all containers
+          containers:
+            - name: azure-pipelines-agent
+              image: {{ include "demo-agent.agentImage" $ }}
+              imagePullPolicy: {{ $.Values.azpAgentContainer.image.pullPolicy }}
+              args:
+                - "--once"
+              resources:
+                {{- toYaml $.Values.azpAgentContainer.resources | nindent 16 }}
+              volumeMounts:
+                - mountPath: /azp/_work
+                  name: workspace
+              # Note: the operator automatically sets AZP_AGENT_NAME, AZP_URL, AZP_POOL and AZP_TOKEN (from the secret)
+              env: [ ]
+              lifecycle:
+                preStop:
+                  exec:
+                    command: [ "/bin/sh", "-c", "while [ $(pgrep -l Agent.Worker | wc -l) -ne 0 ]; do sleep 1; done" ]
+            {{- range $container := $podsWithCapabilities.containers }}
+
+            - name: {{ $container.name }}
+              image: {{ $container.image.registry }}/{{ $container.image.repository }}:{{ $container.image.tag }}
+              {{- with $container.command }}
+              command:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with $container.args }}
+              args:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              imagePullPolicy: {{ $container.image.pullPolicy }}
+              resources:
+                {{- toYaml $container.resources | nindent 16 }}
+              workingDir: /azp/_work
+              {{- with $container.securityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              volumeMounts:
+                - mountPath: /azp/_work
+                  name: workspace
+              lifecycle:
+                preStop:
+                  exec:
+                    command: [ "sudo /bin/sh", "-c", "while [ $(pgrep -l Agent.Worker | wc -l) -ne 0 ]; do sleep 1; done" ]
+            {{- end }}
+          {{- with $.Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+            - name: workspace
+              emptyDir: { }
+    {{- end }}

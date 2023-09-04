@@ -1,0 +1,63 @@
+# Default values for demo-agent.
+
+poolName: "name of your Azure Pipelines agent pool"
+organizationUrl: "URL of your Azure Pipelines organization (https://dev.azure.com/org-name)"
+maxTerminatedPodsToKeep: 1
+pat: ""  # Override this via --set
+
+azpAgentContainer:
+  image:
+    registry: ghcr.io
+    repository: mshekow/azp-agent
+    tag: "2023.09.04"
+    pullPolicy: Always
+
+  resources:
+    limits:
+      memory: 512Mi
+    requests:
+      memory: 512Mi
+
+# Definition of your different agent configurations - definitely overwrite this with an array of objects!
+podsWithCapabilities:
+  # capabilities is an arbitrary key-value pair of Azure DevOps capabilities, may also be empty
+  # (see https://learn.microsoft.com/en-us/azure/devops/pipelines/agents/agents?view=azure-devops&tabs=yaml%2Cbrowser#capabilities)
+  - capabilities:
+      buildkit: "1"
+    minCount: 1
+    maxCount: 5
+    containers:
+      - name: buildkit
+        image:
+          registry: docker.io
+          repository: moby/buildkit
+          tag: master-rootless
+          pullPolicy: Always
+        command: []  # optional, overwrites the image's ENTRYPOINT
+        args: []  # optional, overwrites the image's CMD
+        resources:
+          limits:
+            memory: 1Gi
+          requests:
+            memory: 1Gi
+        securityContext:  # optional, may be necessary for some cluster configurations or images
+          seccompProfile:
+            type: Unconfined
+          runAsUser: 1000
+          runAsGroup: 1000
+
+imagePullSecrets: [ ]  # these secrets are used for all containers defined in "podsWithCapabilities"
+
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: { }
+podLabels: { }
+
+podSecurityContext: { }
+
+nodeSelector: { }
+
+tolerations: [ ]
+
+affinity: { }

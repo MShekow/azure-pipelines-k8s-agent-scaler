@@ -1,0 +1,14 @@
+# Allows AZP agent containers to execute into other pods
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  labels:
+    {{- include "demo-agent.labels" . | nindent 4 }}
+  name: agent-interpod-com
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]

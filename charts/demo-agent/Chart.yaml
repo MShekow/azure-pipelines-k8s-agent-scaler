@@ -1,0 +1,9 @@
+apiVersion: v2
+name: demo-agent
+description: Demonstration chart that sets up Azure Pipeline Agents capable of running jobs with multiple containers
+
+type: application
+
+version: 0.1.0
+
+appVersion: "0.1.0"  # not used
