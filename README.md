@@ -1,6 +1,6 @@
 # azure-pipelines-k8s-agent-scaler
 
-A Kubernetes operator that provisions ephemeral _Pods_ that run Azure DevOps Pipelines agents, as well as other side
+A Kubernetes operator that provisions ephemeral _Pods_ that run Azure DevOps Pipelines agents, as well as other sidecar
 containers.
 
 This operator is written in Go, based on [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime). We
@@ -31,7 +31,7 @@ While the KEDA-based solution is the most economical one, it has many technical 
   start a dynamic container as an _ephemeral_ container (in an already-running agent Pod), which has many other
   drawbacks (e.g. not being protectable from termination via a `preStop` lifecycle hook, or its _resource_ usage not
   being accounted for)
-- If you use _long-running_ agent pods (i.e., _not_ providing the `--once` flag for the Azure Pipelines agent
+- If you use _long-running_ agent pods (i.e., _not_ providing the `--once` flag to the Azure Pipelines agent
   container), KEDA may prematurely kill your agent pods, resulting in aborted pipelines. Why? Because KEDA scales your
   Deployments/Jobs only based on the _number_ of pending jobs. Suppose two jobs are pending, and two Deployments are
   scheduled by KEDA. One job terminates quickly, the other one takes longer. The pending job count gets reduced from 2
