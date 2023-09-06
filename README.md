@@ -26,13 +26,19 @@ While the KEDA-based solution is the most economical one, it has many technical 
   respective images) is cumbersome. Instead of using Azure Pipeline's _demands / capabilities_ feature, you have to
   create a dedicated _agent pool_ for each set of containers, and maintain a correspondingly large set of KEDA-specific
   YAML manifests
-- It is not easily possible to run agents with _dynamically-defined_ containers (example: job #1 builds and pushes a
-  Docker image that you want to run with a KEDA-based agent in job #2 that starts after job #1). The only solution is to
-  start a dynamic container as an _ephemeral_ container (in an already-running agent Pod), which has many other
-  drawbacks (e.g. not being protectable from termination via a `preStop` lifecycle hook, or its _resource_ usage not
-  being accounted for)
+- It is not easily possible to run agents with containers _dynamically-defined_ in your pipeline YAML file.
+  Example: job #1 builds and pushes a Docker image (with a tag that depends on an Azure Pipelines variable) that you
+  want to run with a KEDA-based agent in job #2 that starts after job #1). The only solution is to start a dynamic
+  container as an _ephemeral_ container (in an already-running agent Pod), which has many other drawbacks (e.g. an
+  ephemeral container cannot be protected from termination via a `preStop` lifecycle hook, it is invisible in most
+  tools, and its _resource_ usage is not accounted for via `requests`/`limits`)
+- For every agent pool for which you configure KEDA, you need to define at least one agent `Job`/`Deployment`
+  with `minReplicaCount` larger than 0, as otherwise your jobs would not even start. This disallows you to use the "
+  scale to zero" approach, unless you _manually_ take care of registering a fake/dummy agent for each pool/demand
+  yourself
 - If you use _long-running_ agent pods (i.e., _not_ providing the `--once` flag to the Azure Pipelines agent
-  container), KEDA may prematurely kill your agent pods, resulting in aborted pipelines. Why? Because KEDA scales your
+  container), KEDA may prematurely kill your agent pods, resulting in aborted pipelines and many 'offline' agents in
+  your agent pool. Why? Because KEDA scales your
   Deployments/Jobs only based on the _number_ of pending jobs. Suppose two jobs are pending, and two Deployments are
   scheduled by KEDA. One job terminates quickly, the other one takes longer. The pending job count gets reduced from 2
   to 1, and KEDA down-scales the Deployments, and Kubernetes may (arbitrarily) try to kill the one that is still runs
