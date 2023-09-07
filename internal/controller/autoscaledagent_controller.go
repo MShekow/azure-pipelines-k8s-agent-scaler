@@ -101,15 +101,16 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	_, err = service.CreateOrUpdateDummyAgents(ctx, poolId, azurePat, httpClient, &autoScaledAgent.Spec)
+	dummyAgentNames, err := service.CreateOrUpdateDummyAgents(ctx, poolId, azurePat, httpClient, autoScaledAgent.Name, &autoScaledAgent.Spec)
 	if err != nil {
 		logger.Info("CreateOrUpdateDummyAgents() failed")
 		return ctrl.Result{}, err
 	}
-	// TODO call another method that deletes any offline agent (with name starting
-	// with dummy-agent) that has been created some time ago, except for those dummy
-	// agents we created in CreateOrUpdateDummyAgents. Also, that method should not
-	// be doing work all the time, just e.g. once per hour
+	err = service.DeleteDeadDummyAgents(ctx, poolId, azurePat, httpClient, &autoScaledAgent.Spec, autoScaledAgent.Name, dummyAgentNames)
+	if err != nil {
+		logger.Info("DeleteDeadDummyAgents() failed")
+		return ctrl.Result{}, err
+	}
 
 	pendingJobs, err := service.GetPendingJobs(ctx, poolId, azurePat, httpClient, &autoScaledAgent.Spec)
 	if err != nil {
@@ -605,12 +606,14 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 /*
 TODOs: (turn into GitHub Issues)
 
-- Create Helm chart that demonstrates how to set up the CR
-- Update documentation
-- Simplify reconcile algorithm
-- Test normal demands
 - Implement reusable cache volumes
+- Simplify reconcile algorithm
 - Set up Renovate Bot
+- Terminate all idle agent pods that were created with a different controller-manager version.
+  For instance, in the Dockerfile we could have an ARG CONTROLLER_MANAGER_BUILD_ID (turned into an env var) with some default value
+  which is overwritten by the GHA workflow
+
+
 
 
 */

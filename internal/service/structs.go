@@ -17,6 +17,18 @@ type AzurePipelinesApiPoolNameResponse struct {
 	} `json:"value"`
 }
 
+type AzurePipelinesAgentList struct {
+	Count int                   `json:"count"`
+	Value []AzurePipelinesAgent `json:"value"`
+}
+
+type AzurePipelinesAgent struct {
+	CreatedOn time.Time `json:"createdOn"`
+	Name      string    `json:"name"`
+	Id        int       `json:"id"`
+	Status    string    `json:"status"`
+}
+
 type AzurePipelinesApiJobRequests struct {
 	Count int                           `json:"count"`
 	Value []AzurePipelinesApiJobRequest `json:"value"`

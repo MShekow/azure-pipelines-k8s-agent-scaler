@@ -17,7 +17,10 @@ import (
 	"time"
 )
 
-var dummyAgentNames []string
+var (
+	dummyAgentNames            = make(map[string][]string) // maps from AutoScaledAgent.Name to the list of dummy agent names
+	lastDeadDummyAgentDeletion = time.Date(1999, 1, 1, 0, 0, 0, 0, time.Local)
+)
 
 func CreateHTTPClient() *http.Client {
 	// Configure default timeout
@@ -49,17 +52,17 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 	}
 	defer response.Body.Close()
 
-	bytes, err := io.ReadAll(response.Body)
+	b, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	if !(response.StatusCode >= 200 && response.StatusCode <= 299) {
-		return nil, fmt.Errorf("Azure DevOps REST API returned error. url: %s status: %d response: %s", url, response.StatusCode, string(bytes))
+		return nil, fmt.Errorf("Azure DevOps REST API returned error. url: %s status: %d response: %s", url, response.StatusCode, string(b))
 	}
 
 	var jobRequestsFromApi AzurePipelinesApiJobRequests
-	err = json.Unmarshal(bytes, &jobRequestsFromApi)
+	err = json.Unmarshal(b, &jobRequestsFromApi)
 	if err != nil {
 		return nil, err
 	}
@@ -81,11 +84,13 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 // PodsWithCapabilities, as otherwise Azure DevOps would immediately abort a
 // pipeline
 func CreateOrUpdateDummyAgents(ctx context.Context, poolId int64, azurePat string, httpClient *http.Client,
-	spec *apscalerv1.AutoScaledAgentSpec) ([]string, error) {
-	if len(dummyAgentNames) > 0 {
-		return dummyAgentNames, nil // TODO this needs to be checked individually for each AutoScaledAgent CR, not just globally
+	crName string, spec *apscalerv1.AutoScaledAgentSpec) ([]string, error) {
+	if _, exists := dummyAgentNames[crName]; exists {
+		return dummyAgentNames[crName], nil
 	}
 	logger := log.FromContext(ctx)
+
+	var newDummyAgentNames []string
 
 	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents?api-version=7.0", spec.OrganizationUrl, poolId)
 
@@ -126,7 +131,7 @@ func CreateOrUpdateDummyAgents(ctx context.Context, poolId int64, azurePat strin
 		}
 		defer response.Body.Close()
 
-		dummyAgentNames = append(dummyAgentNames, dummyAgentName)
+		newDummyAgentNames = append(newDummyAgentNames, dummyAgentName)
 
 		if response.StatusCode == 409 {
 			continue // 409 = HTTP "conflict", because an agent with the given name already exists, which is fine (EAFP)
@@ -137,9 +142,11 @@ func CreateOrUpdateDummyAgents(ctx context.Context, poolId int64, azurePat strin
 		}
 	}
 
-	logger.Info("Successfully created/updated dummy agents", "dummyAgentNames", dummyAgentNames)
+	logger.Info("Successfully created/updated dummy agents", "dummyAgentNames", newDummyAgentNames)
 
-	return dummyAgentNames, nil
+	dummyAgentNames[crName] = newDummyAgentNames
+
+	return newDummyAgentNames, nil
 }
 
 func getDummyAgentName(capabilities *map[string]string) string {
@@ -147,6 +154,119 @@ func getDummyAgentName(capabilities *map[string]string) string {
 		return DummyAgentNamePrefix
 	}
 	return fmt.Sprintf("%s-%s", DummyAgentNamePrefix, ComputeMapHash(capabilities))
+}
+
+// DeleteDeadDummyAgents deletes all those registered Azure DevOps agents that
+// have an "offline" status, have a name starting with <DummyAgentNamePrefix> and
+// that have been created some time ago (i.e., any AZP job that needs a
+// registered agent is very likely to already have started).
+// DeleteDeadDummyAgents performs actual API calls only in regular intervals, to
+// avoid spamming the AZP API.
+func DeleteDeadDummyAgents(ctx context.Context, poolId int64, azurePat string, httpClient *http.Client,
+	spec *apscalerv1.AutoScaledAgentSpec, crName string, dummyAgentsToKeep []string) error {
+	if time.Now().Add(-time.Minute * 30).Before(lastDeadDummyAgentDeletion) {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents?api-version=7.0", spec.OrganizationUrl, poolId)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.SetBasicAuth("", azurePat)
+	if err != nil {
+		return err
+	}
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	b, err := io.ReadAll(response.Body)
+	if err != nil {
+		return err
+	}
+
+	if !(response.StatusCode >= 200 && response.StatusCode <= 299) {
+		return fmt.Errorf("Azure DevOps REST API returned error. url: %s status: %d response: %s", url, response.StatusCode, string(b))
+	}
+
+	var agentListFromApi AzurePipelinesAgentList
+	err = json.Unmarshal(b, &agentListFromApi)
+	if err != nil {
+		return err
+	}
+
+	for _, agent := range agentListFromApi.Value {
+		if containsString(dummyAgentsToKeep, agent.Name) || agent.Status != "offline" {
+			continue
+		}
+
+		// Delete dummy agents
+		if strings.HasPrefix(agent.Name, DummyAgentNamePrefix) {
+			cutOffDate := time.Now().Add(-time.Hour * 2)
+			if agent.CreatedOn.Before(cutOffDate) {
+				err := DeleteAgent(ctx, spec.OrganizationUrl, poolId, azurePat, httpClient, agent.Id)
+				if err != nil {
+					return err
+				}
+				logger.Info("DeleteDeadDummyAgents() deleted offline dummy agent", "agentName", agent.Name)
+			}
+		}
+
+		// Delete "normal" agents that are offline for a while for some reasons, most likely because K8s killed them
+		if strings.HasPrefix(agent.Name, crName) {
+			cutOffDate := time.Now().Add(-time.Hour * 5)
+			if agent.CreatedOn.Before(cutOffDate) {
+				err := DeleteAgent(ctx, spec.OrganizationUrl, poolId, azurePat, httpClient, agent.Id)
+				if err != nil {
+					return err
+				}
+				logger.Info("DeleteDeadDummyAgents() deleted 'normal' offline agent", "agentName", agent.Name)
+			}
+		}
+	}
+
+	lastDeadDummyAgentDeletion = time.Now()
+
+	return nil
+}
+
+func DeleteAgent(ctx context.Context, organizationUrl string, poolId int64, azurePat string, httpClient *http.Client, agentId int) error {
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=7.0", organizationUrl, poolId, agentId)
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.SetBasicAuth("", azurePat)
+	if err != nil {
+		return err
+	}
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	b, err := io.ReadAll(response.Body)
+	if err != nil {
+		return err
+	}
+
+	if !(response.StatusCode >= 200 && response.StatusCode <= 299) {
+		return fmt.Errorf("Azure DevOps REST API returned error. url: %s status: %d response: %s", url, response.StatusCode, string(b))
+	}
+
+	return nil
 }
 
 func ComputeMapHash(capabilities *map[string]string) string {
@@ -226,4 +346,13 @@ func Max(x, y int) int {
 		return x
 	}
 	return y
+}
+
+func containsString(slice []string, x string) bool {
+	for _, n := range slice {
+		if x == n {
+			return true
+		}
+	}
+	return false
 }
