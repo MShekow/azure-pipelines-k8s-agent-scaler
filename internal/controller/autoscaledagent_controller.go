@@ -25,6 +25,7 @@ import (
 	"github.com/MShekow/azure-pipelines-k8s-agent-scaler/internal/service"
 	"io"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
@@ -58,6 +59,7 @@ type AutoScaledAgentReconciler struct {
 //+kubebuilder:rbac:groups=azurepipelines.k8s.scaler.io,resources=autoscaledagents/finalizers,verbs=update
 
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
 
@@ -82,6 +84,11 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	err = r.terminatedFinishedAgentPods(ctx, req)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.deletePromisedAnnotationFromPvcs(ctx, req)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -134,7 +141,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		// is below minCount
 		if matchingPodsCount < *podsWithCapabilities.MinCount {
 			agentsToCreate := *podsWithCapabilities.MinCount - matchingPodsCount
-			if err := r.createAgents(ctx, &autoScaledAgent, agentsToCreate, &podsWithCapabilities,
+			if err := r.createAgents(ctx, req, &autoScaledAgent, agentsToCreate, &podsWithCapabilities,
 				&podsWithCapabilities.Capabilities); err != nil {
 				logger.Info("failed to create agent because of minCount")
 				return ctrl.Result{}, err
@@ -193,7 +200,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 					}
 
 					podCapabilitiesMap := service.GetCapabilitiesMapFromString(capabilitiesStr)
-					if err := r.createAgents(ctx, &autoScaledAgent, 1, &podsWithCapabilities,
+					if err := r.createAgents(ctx, req, &autoScaledAgent, 1, &podsWithCapabilities,
 						podCapabilitiesMap); err != nil {
 						logger.Info("unable to create agent for job", "podCapabilitiesMap", podCapabilitiesMap)
 						return ctrl.Result{}, err
@@ -236,6 +243,21 @@ func (r *AutoScaledAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, jobOwnerKey, func(rawObj client.Object) []string {
 		pod := rawObj.(*corev1.Pod)
 		owner := metav1.GetControllerOf(pod)
+		if owner == nil {
+			return nil
+		}
+		if owner.APIVersion != apscalerv1.GroupVersion.String() || owner.Kind != "AutoScaledAgent" {
+			return nil
+		}
+
+		return []string{owner.Name}
+	}); err != nil {
+		return err
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.PersistentVolumeClaim{}, jobOwnerKey, func(rawObj client.Object) []string {
+		pvc := rawObj.(*corev1.PersistentVolumeClaim)
+		owner := metav1.GetControllerOf(pvc)
 		if owner == nil {
 			return nil
 		}
@@ -356,10 +378,10 @@ func getPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Cl
 	return poolId, nil
 }
 
-func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, agent *apscalerv1.AutoScaledAgent, count int32,
+func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent, count int32,
 	podsWithCapabilities *apscalerv1.PodsWithCapabilities, capabilities *map[string]string) error {
 	for i := 0; i < int(count); i++ {
-		if err := r.createAgent(ctx, agent, podsWithCapabilities, capabilities); err != nil {
+		if err := r.createAgent(ctx, req, agent, podsWithCapabilities, capabilities); err != nil {
 			return err
 		}
 	}
@@ -367,7 +389,7 @@ func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, agent *aps
 	return nil
 }
 
-func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, agent *apscalerv1.AutoScaledAgent,
+func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent,
 	podsWithCapabilities *apscalerv1.PodsWithCapabilities, capabilities *map[string]string) error {
 	logger := log.FromContext(ctx)
 	podName := fmt.Sprintf("%s-%s", agent.Name, service.GenerateRandomString())
@@ -447,7 +469,169 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, agent *apsc
 		return err
 	}
 
+	err := r.assignOrCreatePvcs(ctx, req, agent, pod)
+	if err != nil {
+		return err
+	}
+
 	return r.Create(ctx, pod)
+}
+
+// assignOrCreatePvcs analyzes the containers of `pod` for volumeMounts
+// referencing reusable cache volumes. For any such volumeMount, it adds a volume
+// entry to the pod, referencing either an existing un-promised PVC (that can be reused), or creating a new PVC
+func (r *AutoScaledAgentReconciler) assignOrCreatePvcs(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent, pod *corev1.Pod) error {
+	logger := log.FromContext(ctx)
+
+	if len(agent.Spec.ReusableCacheVolumes) == 0 {
+		return nil
+	}
+
+	pvcs := &corev1.PersistentVolumeClaimList{}
+	opts := []client.ListOption{
+		client.InNamespace(req.NamespacedName.Namespace),
+		client.MatchingFields{jobOwnerKey: req.Name},
+	}
+	if err := r.List(ctx, pvcs, opts...); err != nil {
+		return err
+	}
+
+	for _, container := range pod.Spec.Containers {
+		for _, volumeMount := range container.VolumeMounts {
+			if matchingCacheVolume := service.GetMatchingCacheVolume(volumeMount.Name, agent.Spec.ReusableCacheVolumes); matchingCacheVolume != nil {
+				var cacheVolumePvc *corev1.PersistentVolumeClaim
+
+				if availablePvc := service.GetAvailablePvc(pvcs.Items, volumeMount.Name); availablePvc != nil {
+					availablePvc.Annotations[service.ReusableCacheVolumePromisedAnnotationKey] = pod.Name
+					err := r.Update(ctx, availablePvc)
+					if err != nil {
+						logger.Info("assignOrCreatePvcs(): unable to set Promised annotation for cache volume", "volumeName", volumeMount.Name)
+						return err
+					}
+					logger.Info("assignOrCreatePvcs(): using existing PVC for cache volume", "volumeName", volumeMount.Name, "pvcName", availablePvc.Name)
+					cacheVolumePvc = availablePvc
+				} else {
+					// create a new PVC
+					pvcName := fmt.Sprintf("%s-%s", agent.Name, service.GenerateRandomString())
+
+					storageQuantity, err := resource.ParseQuantity(matchingCacheVolume.RequestedStorage)
+					if err != nil {
+						return err
+					}
+
+					volumeMode := corev1.PersistentVolumeFilesystem
+					pvc := corev1.PersistentVolumeClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: make(map[string]string),
+							Annotations: map[string]string{
+								service.ReusableCacheVolumePromisedAnnotationKey: pod.Name,
+								service.ReusableCacheVolumeNameAnnotationKey:     matchingCacheVolume.Name,
+							},
+							Name:      pvcName,
+							Namespace: agent.Namespace,
+						},
+						Spec: corev1.PersistentVolumeClaimSpec{
+							AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+							Resources: corev1.ResourceRequirements{
+								Requests: map[corev1.ResourceName]resource.Quantity{
+									corev1.ResourceStorage: storageQuantity,
+								},
+							},
+							StorageClassName: &matchingCacheVolume.StorageClassName,
+							VolumeMode:       &volumeMode,
+						},
+					}
+					if err := ctrl.SetControllerReference(agent, &pvc, r.Scheme); err != nil {
+						logger.Error(err, "Unable to set controller reference for PVC", "pvcName", pvcName)
+						return err
+					}
+					err = r.Create(ctx, &pvc)
+					if err != nil {
+						logger.Info("assignOrCreatePvcs(): unable to create new PVC for cache volume", "volumeName", volumeMount.Name)
+						return err
+					}
+					logger.Info("assignOrCreatePvcs(): created new PVC for cache volume", "volumeName", volumeMount.Name, "pvcName", pvcName)
+					cacheVolumePvc = &pvc
+				}
+
+				// Actually use the volume: add new volume to pod.Spec.Volumes
+				pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
+					Name: volumeMount.Name,
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: cacheVolumePvc.Name,
+							ReadOnly:  false,
+						},
+					},
+				})
+			}
+		}
+	}
+
+	return nil
+}
+
+//func (r *AutoScaledAgentReconciler) deleteUnknownPvcs(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent) error {
+//	// TODO cleans up PVCs for which there are no reusable cache volume definitions anymore
+//	// TODO call
+//	logger := log.FromContext(ctx)
+//}
+
+// deletePromisedAnnotationFromPvcs iterates through reusable cache volume PVCs
+// and removes the PromisedFor annotation if the referenced pod either no longer
+// exists, or has a terminated phase
+func (r *AutoScaledAgentReconciler) deletePromisedAnnotationFromPvcs(ctx context.Context, req ctrl.Request) error {
+	logger := log.FromContext(ctx)
+
+	pvcs := &corev1.PersistentVolumeClaimList{}
+	opts := []client.ListOption{
+		client.InNamespace(req.NamespacedName.Namespace),
+		client.MatchingFields{jobOwnerKey: req.Name},
+	}
+	if err := r.List(ctx, pvcs, opts...); err != nil {
+		return err
+	}
+
+	podList := &corev1.PodList{}
+	opts = []client.ListOption{
+		client.InNamespace(req.NamespacedName.Namespace),
+		client.MatchingFields{jobOwnerKey: req.Name},
+	}
+	if err := r.List(ctx, podList, opts...); err != nil {
+		return err
+	}
+
+	for _, pvc := range pvcs.Items {
+		if promisedPodName, exists := pvc.Annotations[service.ReusableCacheVolumePromisedAnnotationKey]; exists {
+			// Find corresponding Pod
+			var pod *corev1.Pod
+			for _, p := range podList.Items {
+				if p.Name == promisedPodName {
+					pod = &p
+					break
+				}
+			}
+
+			// Update PVC
+			if pod == nil || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				delete(pvc.Annotations, service.ReusableCacheVolumePromisedAnnotationKey)
+				err := r.Update(ctx, &pvc)
+				if err != nil {
+					logger.Info("deletePromisedAnnotationFromPvcs(): removing promised annotation failed")
+					return err
+				}
+
+				reason := "pod no longer exists"
+				if pod != nil {
+					reason = "pod has terminated"
+				}
+				logger.Info("deletePromisedAnnotationFromPvcs(): removed promised-for annotation",
+					"promisedPodName", promisedPodName, "pvcName", pvc.Name, "reason", reason)
+			}
+		}
+	}
+
+	return nil
 }
 
 // getTerminateablePod returns the first Pod object, for which a "kubectl exec
@@ -606,14 +790,17 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 /*
 TODOs: (turn into GitHub Issues)
 
-- Implement reusable cache volumes
+- Reusable cache volumes:
+-- Test with BuildKit
+-- Add ability to add custom volumes (ConfigMap) to demo-agent Helm chart, figure out good buildkitd.toml
+-- Maybe add a buildctl prune command to the preStopLifecycle-hook
+- Check whether terminationGracePeriod is correctly configured everywhere
 - Simplify reconcile algorithm
 - Set up Renovate Bot
 - Terminate all idle agent pods that were created with a different controller-manager version.
   For instance, in the Dockerfile we could have an ARG CONTROLLER_MANAGER_BUILD_ID (turned into an env var) with some default value
   which is overwritten by the GHA workflow
-
-
+- Min/Max-scaling based on a schedule
 
 
 */

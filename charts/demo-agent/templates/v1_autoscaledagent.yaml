@@ -9,6 +9,8 @@ spec:
   organizationUrl: {{ .Values.organizationUrl }}
   personalAccessTokenSecretName: azure-pipelines-pat
   maxTerminatedPodsToKeep: {{ .Values.maxTerminatedPodsToKeep }}
+  reusableCacheVolumes:
+    {{- toYaml .Values.reusableCacheVolumes | nindent 4 }}
   podsWithCapabilities:
     {{- range $podsWithCapabilities := .Values.podsWithCapabilities }}
     - capabilities:
@@ -70,6 +72,9 @@ spec:
               volumeMounts:
                 - mountPath: /azp/_work
                   name: workspace
+                {{- with $container.mountedReusableCacheVolumes }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
               lifecycle:
                 preStop:
                   exec:

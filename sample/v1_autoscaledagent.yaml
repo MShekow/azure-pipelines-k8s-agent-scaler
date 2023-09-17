@@ -13,6 +13,10 @@ spec:
   organizationUrl: https://dev.azure.com/FOO
   personalAccessTokenSecretName: azure-pat
   maxTerminatedPodsToKeep: 2
+  reusableCacheVolumes:
+    - name: buildkit-cache
+      storageClassName: hostpath
+      requestedStorage: 2Gi
   podsWithCapabilities:
     - capabilities: { }
       minCount: 1
@@ -63,6 +67,8 @@ spec:
               volumeMounts:
                 - mountPath: /azp/_work
                   name: workspace
+                - mountPath: /foo  # TODO /home/user/.local/share/buildkit
+                  name: buildkit-cache
               lifecycle:
                 preStop:
                   exec:

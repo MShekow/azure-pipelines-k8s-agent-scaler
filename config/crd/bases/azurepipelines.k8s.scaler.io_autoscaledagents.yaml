@@ -8143,6 +8143,17 @@ spec:
               poolName:
                 description: PoolName is the name of the Azure DevOps pool name
                 type: string
+              reusableCacheVolumes:
+                items:
+                  properties:
+                    name:
+                      type: string
+                    requestedStorage:
+                      type: string
+                    storageClassName:
+                      type: string
+                  type: object
+                type: array
             type: object
           status:
             description: AutoScaledAgentStatus defines the observed state of AutoScaledAgent

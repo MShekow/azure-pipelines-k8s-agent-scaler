@@ -42,7 +42,16 @@ type AutoScaledAgentSpec struct {
 	// +kubebuilder:default:=5
 	MaxTerminatedPodsToKeep *int32 `json:"maxTerminatedPodsToKeep,omitempty"`
 
+	// +optional
+	ReusableCacheVolumes []ReusableCacheVolume `json:"reusableCacheVolumes,omitempty"`
+
 	PodsWithCapabilities []PodsWithCapabilities `json:"podsWithCapabilities,omitempty"`
+}
+
+type ReusableCacheVolume struct {
+	Name             string `json:"name,omitempty"`
+	StorageClassName string `json:"storageClassName,omitempty"`
+	RequestedStorage string `json:"requestedStorage,omitempty"`
 }
 
 type PodsWithCapabilities struct {

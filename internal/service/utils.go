@@ -356,3 +356,23 @@ func containsString(slice []string, x string) bool {
 	}
 	return false
 }
+
+func GetMatchingCacheVolume(volumeName string, reusableVolumes []apscalerv1.ReusableCacheVolume) *apscalerv1.ReusableCacheVolume {
+	for _, reusableVolume := range reusableVolumes {
+		if reusableVolume.Name == volumeName {
+			return &reusableVolume
+		}
+	}
+	return nil
+}
+
+func GetAvailablePvc(pvcs []corev1.PersistentVolumeClaim, volumeName string) *corev1.PersistentVolumeClaim {
+	for _, pvc := range pvcs {
+		if vn := pvc.Annotations[ReusableCacheVolumeNameAnnotationKey]; vn == volumeName {
+			if _, exists := pvc.Annotations[ReusableCacheVolumePromisedAnnotationKey]; !exists {
+				return &pvc
+			}
+		}
+	}
+	return nil
+}

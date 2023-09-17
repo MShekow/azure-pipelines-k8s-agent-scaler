@@ -18,6 +18,11 @@ azpAgentContainer:
     requests:
       memory: 512Mi
 
+reusableCacheVolumes:
+  - name: buildkit-cache
+    storageClassName: hostpath
+    requestedStorage: 2Gi
+
 # Definition of your different agent configurations - definitely overwrite this with an array of objects!
 podsWithCapabilities:
   # capabilities is an arbitrary key-value pair of Azure DevOps capabilities, may also be empty
@@ -45,6 +50,9 @@ podsWithCapabilities:
             type: Unconfined
           runAsUser: 1000
           runAsGroup: 1000
+        mountedReusableCacheVolumes:
+          - name: buildkit-cache
+            mountPath: /foo  # TODO
 
 imagePullSecrets: [ ]  # these secrets are used for all containers defined in "podsWithCapabilities"
 
