@@ -18,13 +18,15 @@ spec:
       storageClassName: hostpath
       requestedStorage: 2Gi
   podsWithCapabilities:
-    - capabilities: { }
+    - capabilities:
+        buildkit: "1"
       minCount: 1
       maxCount: 3
       podAnnotations:
         foo: bar
       podTemplateSpec:
         spec:
+          terminationGracePeriodSeconds: 1200
           imagePullSecrets: [ ]
           shareProcessNamespace: true  # needed to be able to use the SAME(!) preStop hook in all containers
           containers:
@@ -67,7 +69,7 @@ spec:
               volumeMounts:
                 - mountPath: /azp/_work
                   name: workspace
-                - mountPath: /foo  # TODO /home/user/.local/share/buildkit
+                - mountPath: /home/user/.local/share/buildkit
                   name: buildkit-cache
               lifecycle:
                 preStop:

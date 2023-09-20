@@ -74,8 +74,8 @@ Features of `azure-pipelines-k8s-agent-scaler`:
   pods, ensuring that a volume is mounted to only _one_ pod
 - Ability to specify extra containers (including their CPU and memory limits) right in the AZP pipeline YAML file via
   _demands_ (example:
-  `ExtraAgentContainers -equals containername,someImage:someTag,250m,64Mi||otherContainerName,someOtherImage:someTag,500m,128Mi`.
-  Note that the values can also be _dynamic_, e.g. by populating the demand with AZP _variables_)
+  `ExtraAgentContainers -equals containername,someImage:someTag,250m,64Mi||otherContainerName,someOtherImage:someTag,500m,128Mi`).
+  Note that the values can also be _dynamic_, e.g. by populating the demand with AZP _variables_
 - Automatic registration of (offline) dummy/fake AZP agents that have the _demands_ that you defined in your
   configuration. This is necessary because the AZP platform would otherwise abort jobs that have demands for which there
   are no _registered_ agents. This AZP-platform-behavior conflicts with the _dynamic_ registration of agents, as done by

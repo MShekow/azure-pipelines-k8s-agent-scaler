@@ -3,7 +3,7 @@
 This chart demonstrates how to set up Azure Pipeline Agents (for one specific agent pool) that are capable of running
 jobs with multiple containers.
 
-Just make a copy of this folder and modify the chart you see fit.
+Just make a copy of this folder and modify the chart as you see fit.
 
 To install/upgrade the chart (example):
 

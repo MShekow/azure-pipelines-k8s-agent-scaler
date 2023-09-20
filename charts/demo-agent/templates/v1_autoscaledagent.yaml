@@ -27,6 +27,7 @@ spec:
       {{- end }}
       podTemplateSpec:
         spec:
+          terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds }}
           {{- with $.Values.imagePullSecrets }}
           imagePullSecrets:
             {{- toYaml . | nindent 12 }}
@@ -69,10 +70,17 @@ spec:
               securityContext:
                 {{- toYaml . | nindent 16 }}
               {{- end }}
+              {{- with $container.readinessProbe }}
+              readinessProbe:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
               volumeMounts:
                 - mountPath: /azp/_work
                   name: workspace
                 {{- with $container.mountedReusableCacheVolumes }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+                {{- with $container.volumeMounts }}
                 {{- toYaml . | nindent 16 }}
                 {{- end }}
               lifecycle:
@@ -95,4 +103,7 @@ spec:
           volumes:
             - name: workspace
               emptyDir: { }
+            {{- with $podsWithCapabilities.volumes }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
     {{- end }}

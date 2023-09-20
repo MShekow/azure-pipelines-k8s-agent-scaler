@@ -21,7 +21,17 @@ azpAgentContainer:
 reusableCacheVolumes:
   - name: buildkit-cache
     storageClassName: hostpath
-    requestedStorage: 2Gi
+    requestedStorage: 70Gi  # Note: keep this in sync with <keepTotalGi>, see below
+
+buildkitConfig:
+  debug: false
+  gc:
+    # how many Gigabytes of cache mount data to keep (related to "RUN --mount=type=cache" statements in a Dockerfile)
+    keepCacheMountsGi: 30
+    # how many Gigabytes of cache data to keep overall (leaving "<keepTotalGi> - <keepCacheMountsGi>" for normal image layers)
+    # Keep this in sync with reusableCacheVolumes[*].requestedStorage, such that requestedStorage is slightly larger
+    # than <keepTotalGi>, to give BuildKit's GC routines enough time (and avoid "no space left on device" errors)
+    keepTotalGi: 60
 
 # Definition of your different agent configurations - definitely overwrite this with an array of objects!
 podsWithCapabilities:
@@ -31,7 +41,11 @@ podsWithCapabilities:
       buildkit: "1"
     minCount: 1
     maxCount: 5
-    containers:
+    volumes:  # defines extra/custom volumes
+      - name: buildkit-config
+        configMap:
+          name: buildkit-config
+    containers:  # defines extra sidecar containers that run alongside the AZP agent container
       - name: buildkit
         image:
           registry: docker.io
@@ -39,7 +53,8 @@ podsWithCapabilities:
           tag: master-rootless
           pullPolicy: Always
         command: []  # optional, overwrites the image's ENTRYPOINT
-        args: []  # optional, overwrites the image's CMD
+        args:  # optional, overwrites the image's CMD
+          - --oci-worker-no-process-sandbox
         resources:
           limits:
             memory: 1Gi
@@ -50,11 +65,22 @@ podsWithCapabilities:
             type: Unconfined
           runAsUser: 1000
           runAsGroup: 1000
+        readinessProbe:
+          exec:
+            command:
+              - "buildctl"
+              - "debug"
+              - "workers"
         mountedReusableCacheVolumes:
           - name: buildkit-cache
-            mountPath: /foo  # TODO
+            mountPath: /home/user/.local/share/buildkit
+        volumeMounts:  # defines extra volume mounts, if necessary
+          - name: buildkit-config
+            mountPath: /home/user/.config/buildkit
 
 imagePullSecrets: [ ]  # these secrets are used for all containers defined in "podsWithCapabilities"
+
+terminationGracePeriodSeconds: 1200  # a longer time period avoids that K8s can prematurely terminate ongoing AZP jobs
 
 nameOverride: ""
 fullnameOverride: ""

@@ -143,10 +143,10 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			agentsToCreate := *podsWithCapabilities.MinCount - matchingPodsCount
 			if err := r.createAgents(ctx, req, &autoScaledAgent, agentsToCreate, &podsWithCapabilities,
 				&podsWithCapabilities.Capabilities); err != nil {
-				logger.Info("failed to create agent because of minCount")
+				logger.Info("failed to create agent that satisfies minCount")
 				return ctrl.Result{}, err
 			}
-			logger.Info("successfully created agents because of minCount", "agentsToCreate", agentsToCreate)
+			logger.Info("successfully created agents that satisfies minCount", "agentsToCreate", agentsToCreate)
 			continue // Do not run the remaining code, to avoid the risk of running conflicting logic in one iteration
 		}
 
@@ -775,12 +775,6 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 	return stdout.String(), stderr.String(), nil
 }
 
-//TODO need to document that you need to use "shareProcessNamespace" in the pod
-// spec, as otherwise the preStop lifecycle hook
-// would not work properly for the OTHER containers. This is only necessary if
-// the user defines more than 1 container, either statically (in the pod spec),
-// or using ExtraAgentContainers-demands.
-
 //TODO (further in the future): think about whether it makes sense to replace preStop lifecycle hook with dynamically-managed
 // PodDisruptionBudget objects. After all, the preStop lifecycle hook only exist to avoid that pods are _voluntarily_
 // disrupted (see https://kubernetes.io/docs/concepts/workloads/pods/disruptions/#voluntary-and-involuntary-disruptions),
@@ -790,12 +784,8 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 /*
 TODOs: (turn into GitHub Issues)
 
-- Reusable cache volumes:
--- Test with BuildKit
--- Add ability to add custom volumes (ConfigMap) to demo-agent Helm chart, figure out good buildkitd.toml
--- Maybe add a buildctl prune command to the preStopLifecycle-hook
-- Check whether terminationGracePeriod is correctly configured everywhere
 - Simplify reconcile algorithm
+- Make new release (Docker+Chart)
 - Set up Renovate Bot
 - Terminate all idle agent pods that were created with a different controller-manager version.
   For instance, in the Dockerfile we could have an ARG CONTROLLER_MANAGER_BUILD_ID (turned into an env var) with some default value
