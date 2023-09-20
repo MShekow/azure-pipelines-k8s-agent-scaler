@@ -2,6 +2,22 @@ apiVersion: v1
 entries:
   azp-k8s-agent-scaler-operator:
   - apiVersion: v2
+    appVersion: 2023.09.20
+    created: "2023-09-20T12:47:49.351250392Z"
+    dependencies:
+    - condition: installCRDs
+      name: azp-k8s-agent-scaler-operator-crds
+      repository: ""
+      version: 0.1.1
+    description: Azure Pipelines Kubernetes-based agent scaler operator
+    digest: 8d31195e756d97d112446dd175434d5359ed928a1ce0b7be7ce893e04e91c640
+    home: https://github.com/MShekow/azure-pipelines-k8s-agent-scaler
+    name: azp-k8s-agent-scaler-operator
+    type: application
+    urls:
+    - https://github.com/MShekow/azure-pipelines-k8s-agent-scaler/releases/download/azp-k8s-agent-scaler-operator-0.1.2/azp-k8s-agent-scaler-operator-0.1.2.tgz
+    version: 0.1.2
+  - apiVersion: v2
     appVersion: 2023.09.04
     created: "2023-09-04T13:24:10.535601721Z"
     dependencies:
@@ -33,4 +49,16 @@ entries:
     urls:
     - https://github.com/MShekow/azure-pipelines-k8s-agent-scaler/releases/download/azp-k8s-agent-scaler-operator-0.1.0/azp-k8s-agent-scaler-operator-0.1.0.tgz
     version: 0.1.0
-generated: "2023-09-04T13:24:10.535616521Z"
+  demo-agent:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2023-09-20T12:47:49.488013674Z"
+    description: Demonstration chart that sets up Azure Pipeline Agents capable of
+      running jobs with multiple containers
+    digest: 573a0efaf00368b537273497446a004933698c8d710da3e0c4363afdc7d53a13
+    name: demo-agent
+    type: application
+    urls:
+    - https://github.com/MShekow/azure-pipelines-k8s-agent-scaler/releases/download/demo-agent-0.1.1/demo-agent-0.1.1.tgz
+    version: 0.1.1
+generated: "2023-09-20T12:47:49.488026972Z"
