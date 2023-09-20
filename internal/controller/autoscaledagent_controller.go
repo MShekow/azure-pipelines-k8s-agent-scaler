@@ -32,7 +32,6 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -130,30 +129,54 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		logger.Info("getPodsWithPhases(): unable to get Running/Pending pods")
 		return ctrl.Result{}, err
 	}
+	runningPodsFiltered := service.GetFilteredRunningPods(runningPodsRaw)
 
-	runningPods := service.NewRunningPodsWrapper(runningPodsRaw)
+	runningPods := service.NewRunningPodsWrapper(runningPodsFiltered)
 
 	for _, podsWithCapabilities := range autoScaledAgent.Spec.PodsWithCapabilities {
 		matchingPods := runningPods.GetInexactMatch(&podsWithCapabilities.Capabilities)
 		matchingPodsCount := service.GetPodCount(matchingPods)
+		matchingJobs := pendingJobs.GetInexactMatch(&podsWithCapabilities.Capabilities)
+		matchingJobsCount := service.GetJobCount(matchingJobs)
 
-		// Start agents (no matter whether there are jobs that need them or not) if the actual agent pod count
-		// is below minCount
-		if matchingPodsCount < *podsWithCapabilities.MinCount {
+		if int(matchingPodsCount) > service.Min(int(*podsWithCapabilities.MaxCount), service.Max(matchingJobsCount, int(*podsWithCapabilities.MinCount))) {
+			// Delete pods because we have too many. This situation should be rare (because agents normally terminate
+			// after having run a job) it can happen in specific situations, e.g. when the user reduced the maxCount
+			// in a pod spec in an AutoScaledAgentSpec CR
+			logger.Info(fmt.Sprintf("Need to terminate a pod: %d > min(%d, max(%d, %d))", matchingPodsCount, *podsWithCapabilities.MaxCount, len(*matchingJobs), *podsWithCapabilities.MinCount))
+
+			if terminateablePod, err := r.getTerminateablePod(ctx, matchingPods); err != nil {
+				logger.Info("unable to get terminateable pod")
+				return ctrl.Result{}, err
+			} else {
+				if terminateablePod != nil {
+					err := r.Delete(ctx, terminateablePod, client.PropagationPolicy(metav1.DeletePropagationBackground))
+					if err != nil {
+						logger.Info("unable to get terminate pod (lower code path)", "podName", terminateablePod.Name)
+						return ctrl.Result{}, err
+					}
+					logger.Info("successfully terminated pod", "podName", terminateablePod.Name)
+				} else {
+					logger.Info("did not find any pod that could be terminated")
+				}
+			}
+			continue
+		} else if matchingPodsCount < *podsWithCapabilities.MinCount {
+			// Start agents (even though there are currently no jobs that need them)
 			agentsToCreate := *podsWithCapabilities.MinCount - matchingPodsCount
 			if err := r.createAgents(ctx, req, &autoScaledAgent, agentsToCreate, &podsWithCapabilities,
 				&podsWithCapabilities.Capabilities); err != nil {
 				logger.Info("failed to create agent that satisfies minCount")
 				return ctrl.Result{}, err
 			}
-			logger.Info("successfully created agents that satisfies minCount", "agentsToCreate", agentsToCreate)
+			logger.Info("successfully created agents to satisfy minCount", "agentsToCreate", agentsToCreate)
 			continue // Do not run the remaining code, to avoid the risk of running conflicting logic in one iteration
 		}
 
 		maxAgentsAllowedToCreate := *podsWithCapabilities.MaxCount - matchingPodsCount
 		if maxAgentsAllowedToCreate > 0 {
-			matchingJobs := pendingJobs.GetInexactMatch(&podsWithCapabilities.Capabilities)
-			// Array of strings (the concrete capabilities) of agents we want to create in this reconcile cycle.
+			// agentsWithCapsToCreate contains strings (the concrete capabilities) of agents we want to create in
+			// this reconcile cycle.
 			// Note: may contain more entries than we are actually allowed to create
 			var agentsWithCapsToCreate []string
 			for demandStr, jobs := range *matchingJobs {
@@ -166,64 +189,24 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 					}
 				}
 			}
-			if len(agentsWithCapsToCreate) == 0 {
-				// Delete superfluous pods.
-				// Although the number of pods has not exceeded maxCount, we might still have too
-				// many pods (more than there are jobs), and thus should kill pods. However, this
-				// should be very rare, because agent pods automatically terminate after having completed a job
-				// (due to using the "--once" flag)
-				for capabilitiesStr, pods := range *matchingPods {
-					matchingJobCount := len((*matchingJobs)[capabilitiesStr])
-					if len(pods) > service.Max(matchingJobCount, int(*podsWithCapabilities.MinCount)) {
-						if terminateablePod, err := r.getTerminateablePod(ctx, matchingPods); err != nil {
-							logger.Info("unable to get terminateable pod (upper code path)")
-							return ctrl.Result{}, err
-						} else {
-							if terminateablePod != nil {
-								err := r.Delete(ctx, terminateablePod, client.PropagationPolicy(metav1.DeletePropagationBackground))
-								if err != nil {
-									logger.Info("unable to get terminate pod", "podName", terminateablePod.Name)
-									return ctrl.Result{}, err
-								}
-								logger.Info("successfully terminated pod", "podName", terminateablePod.Name)
-							}
-						}
-					}
-				}
-			} else {
-				for i, capabilitiesStr := range agentsWithCapsToCreate {
-					if maxAgentsAllowedToCreate == 0 {
-						agentsLeftToCreate := len(agentsWithCapsToCreate) - i - 1
-						logger.Info("Stopped creating agents to avoid exceeding MaxCount",
-							"agentsLeftToCreate", agentsLeftToCreate)
-						break
-					}
 
-					podCapabilitiesMap := service.GetCapabilitiesMapFromString(capabilitiesStr)
-					if err := r.createAgents(ctx, req, &autoScaledAgent, 1, &podsWithCapabilities,
-						podCapabilitiesMap); err != nil {
-						logger.Info("unable to create agent for job", "podCapabilitiesMap", podCapabilitiesMap)
-						return ctrl.Result{}, err
-					}
-					logger.Info("successfully created agent for job", "podCapabilitiesMap", podCapabilitiesMap)
-
-					maxAgentsAllowedToCreate -= 1
+			for i, capabilitiesStr := range agentsWithCapsToCreate {
+				if maxAgentsAllowedToCreate == 0 {
+					agentsLeftToCreate := len(agentsWithCapsToCreate) - i - 1
+					logger.Info("Stopped creating agents to avoid exceeding MaxCount",
+						"agentsLeftToCreate", agentsLeftToCreate)
+					break
 				}
-			}
-		} else if maxAgentsAllowedToCreate < 0 {
-			// Delete pods because we have too many. This situation should be rare (because agents normally terminate
-			// after having run a job) it can happen in specific situations, e.g. when the user reduced the maxCount
-			// in a pod spec in an AutoScaledAgentSpec CR
-			if terminateablePod, err := r.getTerminateablePod(ctx, matchingPods); err != nil {
-				logger.Info("unable to get terminateable pod (lower code path)")
-				return ctrl.Result{}, err
-			} else {
-				err := r.Delete(ctx, terminateablePod, client.PropagationPolicy(metav1.DeletePropagationBackground))
-				if err != nil {
-					logger.Info("unable to get terminate pod (lower code path)", "podName", terminateablePod.Name)
+
+				podCapabilitiesMap := service.GetCapabilitiesMapFromString(capabilitiesStr)
+				if err := r.createAgents(ctx, req, &autoScaledAgent, 1, &podsWithCapabilities,
+					podCapabilitiesMap); err != nil {
+					logger.Info("unable to create agent for job", "podCapabilitiesMap", podCapabilitiesMap)
 					return ctrl.Result{}, err
 				}
-				logger.Info("successfully terminated pod (lower code path)", "podName", terminateablePod.Name)
+				logger.Info("successfully created agent for job", "podCapabilitiesMap", podCapabilitiesMap)
+
+				maxAgentsAllowedToCreate -= 1
 			}
 		}
 	}
@@ -380,9 +363,12 @@ func getPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Cl
 
 func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent, count int32,
 	podsWithCapabilities *apscalerv1.PodsWithCapabilities, capabilities *map[string]string) error {
+	logger := log.FromContext(ctx)
 	for i := 0; i < int(count); i++ {
-		if err := r.createAgent(ctx, req, agent, podsWithCapabilities, capabilities); err != nil {
+		if podName, err := r.createAgent(ctx, req, agent, podsWithCapabilities, capabilities); err != nil {
 			return err
+		} else {
+			logger.Info("createAgents(): successfully created agent pod", "podName", podName)
 		}
 	}
 
@@ -390,7 +376,7 @@ func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, req ctrl.R
 }
 
 func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent,
-	podsWithCapabilities *apscalerv1.PodsWithCapabilities, capabilities *map[string]string) error {
+	podsWithCapabilities *apscalerv1.PodsWithCapabilities, capabilities *map[string]string) (string, error) {
 	logger := log.FromContext(ctx)
 	podName := fmt.Sprintf("%s-%s", agent.Name, service.GenerateRandomString())
 
@@ -451,7 +437,7 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, req ctrl.Re
 	if extraAgentContainersStr, exists := (*capabilities)[service.ExtraAgentContainersAnnotationKey]; exists {
 		extraAgentContainerDefs, err := service.ParseExtraAgentContainerDefinition(extraAgentContainersStr)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if len(extraAgentContainerDefs) > 0 {
 			pod.Spec.Containers = append(pod.Spec.Containers, extraAgentContainerDefs...)
@@ -466,15 +452,15 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, req ctrl.Re
 	if err := ctrl.SetControllerReference(agent, pod, r.Scheme); err != nil {
 		logger.Error(err, "Unable to set controller reference for pod", "podName", podName,
 			"capabilities", capabilitiesStr)
-		return err
+		return "", err
 	}
 
 	err := r.assignOrCreatePvcs(ctx, req, agent, pod)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return r.Create(ctx, pod)
+	return podName, r.Create(ctx, pod)
 }
 
 // assignOrCreatePvcs analyzes the containers of `pod` for volumeMounts
@@ -482,6 +468,8 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, req ctrl.Re
 // entry to the pod, referencing either an existing un-promised PVC (that can be reused), or creating a new PVC
 func (r *AutoScaledAgentReconciler) assignOrCreatePvcs(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent, pod *corev1.Pod) error {
 	logger := log.FromContext(ctx)
+
+	// TODO somehow check whether someone/thing already requested the deletion(!) of an unpromised PVC, so that we don't reuse it
 
 	if len(agent.Spec.ReusableCacheVolumes) == 0 {
 		return nil
@@ -613,7 +601,10 @@ func (r *AutoScaledAgentReconciler) deletePromisedAnnotationFromPvcs(ctx context
 			}
 
 			// Update PVC
-			if pod == nil || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			// Note: in rare cases pods that were just created in a previous Reconcile() cycle may not be part of
+			// <podList>, because of the API client cache (where the Pod would appear just mere sections later), thus
+			// HasPodPermanentlyDisappeared() ensures that the pod cannot be found for a while (several seconds), as a workaround
+			if (pod == nil && service.HasPodPermanentlyDisappeared(promisedPodName)) || (pod != nil && (pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed)) {
 				delete(pvc.Annotations, service.ReusableCacheVolumePromisedAnnotationKey)
 				err := r.Update(ctx, &pvc)
 				if err != nil {
@@ -720,18 +711,29 @@ func (r *AutoScaledAgentReconciler) terminatedFinishedAgentPods(ctx context.Cont
 				}
 
 				if len(containerIndicesToTerminate) > 0 {
-					logger.Info("Found containers to terminate", "podName", runningPod.Name, "containerIndicesToTerminate", containerIndicesToTerminate)
-					for _, containerIndex := range containerIndicesToTerminate {
-						containerImage := runningPod.Spec.Containers[containerIndex].Image
-						if !strings.Contains(containerImage, service.NonExistentContainerImageSuffix) {
+					// Terminating a pod takes a while (multiple(!) reconciliation cycles), so to avoid that the reconcile-
+					// algorithm is confused by "running" pods that are in reality already terminating, we set our own annotation
+					// as a means to filter such pods out
+					if _, exists := runningPod.Annotations[service.PodTerminationInProgressAnnotationKey]; !exists {
+						logger.Info("Found containers to terminate", "podName", runningPod.Name, "containerIndicesToTerminate", containerIndicesToTerminate)
+
+						for _, containerIndex := range containerIndicesToTerminate {
+							containerImage := runningPod.Spec.Containers[containerIndex].Image
 							nonExistentImage := containerImage + service.NonExistentContainerImageSuffix
 							runningPod.Spec.Containers[containerIndex].Image = nonExistentImage
-							err = r.Update(ctx, &runningPod)
-							if err != nil {
-								logger.Error(err, "terminatedFinishedAgentPods(): unable to change image", "nonExistentImage", nonExistentImage)
-								return err
-							}
-							logger.Info("updated container image to terminate pod", "containerIndex", containerIndex, "nonExistentImage", nonExistentImage)
+						}
+
+						err = r.Update(ctx, &runningPod)
+						if err != nil {
+							logger.Error(err, "terminatedFinishedAgentPods(): unable to change images to terminate the pod")
+							return err
+						}
+
+						runningPod.Annotations[service.PodTerminationInProgressAnnotationKey] = "1"
+						err = r.Update(ctx, &runningPod)
+						if err != nil {
+							logger.Error(err, "terminatedFinishedAgentPods(): unable to set the termination annotation")
+							return err
 						}
 					}
 				}
@@ -784,7 +786,6 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 /*
 TODOs: (turn into GitHub Issues)
 
-- Simplify reconcile algorithm
 - Make new release (Docker+Chart)
 - Set up Renovate Bot
 - Terminate all idle agent pods that were created with a different controller-manager version.

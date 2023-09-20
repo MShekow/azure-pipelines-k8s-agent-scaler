@@ -289,6 +289,16 @@ func ComputeMapHash(capabilities *map[string]string) string {
 	return fmt.Sprintf("%010x", hashValue)
 }
 
+func GetFilteredRunningPods(pods []corev1.Pod) []corev1.Pod {
+	var out []corev1.Pod
+	for _, p := range pods {
+		if _, exists := p.Annotations[PodTerminationInProgressAnnotationKey]; !exists {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func GetPodCount(runningPods *map[string][]corev1.Pod) int32 {
 	count := 0
 
@@ -297,6 +307,16 @@ func GetPodCount(runningPods *map[string][]corev1.Pod) int32 {
 	}
 
 	return int32(count)
+}
+
+func GetJobCount(pendingJobs *map[string][]PendingJob) int {
+	count := 0
+
+	for _, pjs := range *pendingJobs {
+		count += len(pjs)
+	}
+
+	return count
 }
 
 // GetSortedStringificationOfCapabilitiesMap returns a stringified map, of the form <key1>=<value1>;<key2>=<value2>;...
@@ -348,6 +368,15 @@ func Max(x, y int) int {
 	return y
 }
 
+// Note: Min() and Max() can be removed once we transitioned to Go v1.21 or newer
+
+func Min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}
+
 func containsString(slice []string, x string) bool {
 	for _, n := range slice {
 		if x == n {
@@ -375,4 +404,29 @@ func GetAvailablePvc(pvcs []corev1.PersistentVolumeClaim, volumeName string) *co
 		}
 	}
 	return nil
+}
+
+var disappearedPods = make(map[string]time.Time)
+
+// HasPodPermanentlyDisappeared is given the name of a pod that can no longer be found, and returns true if this
+// method has been called for the same podName for several seconds, thus increasing the likelihood that the pod is
+// really gone (due to client-side caching)
+func HasPodPermanentlyDisappeared(podName string) bool {
+	if _, exists := disappearedPods[podName]; !exists {
+		disappearedPods[podName] = time.Now()
+	}
+
+	age := time.Now().Sub(disappearedPods[podName])
+
+	result := age > 5*time.Second
+
+	// Perform garbage collection to avoid memory leaks
+	for pN, t := range disappearedPods {
+		age := time.Now().Sub(t)
+		if age > 60*time.Second {
+			delete(disappearedPods, pN)
+		}
+	}
+
+	return result
 }
