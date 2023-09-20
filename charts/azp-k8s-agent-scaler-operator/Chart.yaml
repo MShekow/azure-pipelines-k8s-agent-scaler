@@ -7,7 +7,7 @@ type: application
 
 version: 0.1.2
 
-appVersion: "2023.09.04"  # TODO update
+appVersion: "2023.09.20"
 
 dependencies:
   - name: azp-k8s-agent-scaler-operator-crds
