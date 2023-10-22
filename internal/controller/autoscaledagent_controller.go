@@ -625,15 +625,38 @@ func (r *AutoScaledAgentReconciler) deletePromisedAnnotationFromPvcs(ctx context
 	return nil
 }
 
-// getTerminateablePod returns the first Pod object, for which a "kubectl exec
-// <podname> pgrep -l Agent.Worker | wc -l" returns "0", indicating that the
-// agent in the pod is idle (and thus safe to terminate). Errors are swallowed.
-// Note that we need to know the container name, but we assume that the first
-// container of the respective podspec is always the Azure DevOps Agent container
+// getTerminateablePod returns the first agent Pod that has either not even been
+// scheduled, or whose AZP container is still in a Waiting state, or (for AZP
+// containers in Running state) a "kubectl exec <podname> pgrep -l Agent.Worker |
+// wc -l" returns "0", indicating that the agent in the pod is not actively
+// working on any job (and thus safe to terminate). Errors are swallowed. Note
+// that for kubectl exec, we need to know the container name, but we assume that
+// the first container of the respective podspec is always the Azure DevOps Agent
+// container
 func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context, pods *map[string][]corev1.Pod) (*corev1.Pod, error) {
+
 	//_ := log.FromContext(ctx)
-	for _, pods := range *pods {
-		for _, pod := range pods {
+	for _, podList := range *pods {
+		for _, pod := range podList {
+			if pod.Status.Phase == corev1.PodPending {
+				/*
+					We cannot just claim that a Pod whose Phase is Pending can be terminated,
+					because a Pod stays in Pending until ALL its containers have started. Thus, we
+					have to iterate over the Pod's ContainerStatuses (if they are available). We
+					just need to look at the first container status (for the AZP container), and if
+					its State.Waiting is != nil, we can also terminate the entire Pod
+				*/
+				if pod.Status.ContainerStatuses == nil {
+					// Pod has not even been scheduled to a node
+					return &pod, nil
+				}
+
+				// Check the AZP container, which is expected to be always the first container
+				if pod.Status.ContainerStatuses[0].State.Waiting != nil {
+					return &pod, nil
+				}
+			}
+
 			agentContainerName := pod.Spec.Containers[0].Name
 			cmd := []string{"sh", "-c", "pgrep -l Agent.Worker | wc -l"}
 			// TODO differentiate the errors somehow - we only want to "swallow" errors where the pod no longer exists,
@@ -786,7 +809,6 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 /*
 TODOs: (turn into GitHub Issues)
 
-- Make new release (Docker+Chart)
 - Set up Renovate Bot
 - Terminate all idle agent pods that were created with a different controller-manager version.
   For instance, in the Dockerfile we could have an ARG CONTROLLER_MANAGER_BUILD_ID (turned into an env var) with some default value
