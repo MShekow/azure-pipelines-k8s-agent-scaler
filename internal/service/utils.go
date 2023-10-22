@@ -293,7 +293,9 @@ func GetFilteredRunningPods(pods []corev1.Pod) []corev1.Pod {
 	var out []corev1.Pod
 	for _, p := range pods {
 		if _, exists := p.Annotations[PodTerminationInProgressAnnotationKey]; !exists {
-			out = append(out, p)
+			if p.DeletionTimestamp == nil {
+				out = append(out, p)
+			}
 		}
 	}
 	return out
