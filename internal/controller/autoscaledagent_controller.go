@@ -62,7 +62,7 @@ type AutoScaledAgentReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
 
-// Reconcile is called for every change in AutoScaledAgent CRs, or when any of their underlying Pods have changed
+// Reconcile is called for every change in AutoScaledAgent CRs
 func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -211,7 +211,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -255,7 +255,7 @@ func (r *AutoScaledAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&apscalerv1.AutoScaledAgent{}).
-		Owns(&corev1.Pod{}).
+		//Owns(&corev1.Pod{}).
 		Complete(r)
 }
 
