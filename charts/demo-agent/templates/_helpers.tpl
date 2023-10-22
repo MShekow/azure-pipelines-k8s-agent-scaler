@@ -50,17 +50,6 @@ app.kubernetes.io/name: {{ include "demo-agent.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
-{{/*
-Create the name of the service account to use
-*/}}
-{{- define "demo-agent.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "demo-agent.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
-
 {{- define "demo-agent.agentImage" -}}
 {{- if .Values.azpAgentContainer.image.registry }}
 {{- printf "%s/%s:%s" .Values.azpAgentContainer.image.registry .Values.azpAgentContainer.image.repository .Values.azpAgentContainer.image.tag }}

@@ -52,8 +52,8 @@ podsWithCapabilities:
           repository: moby/buildkit
           tag: master-rootless
           pullPolicy: Always
-        command: []  # optional, overwrites the image's ENTRYPOINT
-        args:  # optional, overwrites the image's CMD
+        command: [ ]  # optional, overwrites the image's ENTRYPOINT
+        args: # optional, overwrites the image's CMD
           - --oci-worker-no-process-sandbox
         resources:
           limits:
@@ -74,9 +74,16 @@ podsWithCapabilities:
         mountedReusableCacheVolumes:
           - name: buildkit-cache
             mountPath: /home/user/.local/share/buildkit
-        volumeMounts:  # defines extra volume mounts, if necessary
+        volumeMounts: # defines extra volume mounts, if necessary
           - name: buildkit-config
             mountPath: /home/user/.config/buildkit
+    securityContext:
+      fsGroup: 1000
+      # See https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#configure-volume-permission-and-ownership-change-policy-for-pods
+      # fsGroupChangePolicy should speed up volume mounting, because the long-lasting, recursive chown call would be expensive
+      fsGroupChangePolicy: "OnRootMismatch"
+    annotations:  # See https://github.com/moby/buildkit/issues/2441#issuecomment-1253683784
+      container.apparmor.security.beta.kubernetes.io/buildkit: unconfined  # last segment must match the above container name
 
 imagePullSecrets: [ ]  # these secrets are used for all containers defined in "podsWithCapabilities"
 
@@ -85,10 +92,7 @@ terminationGracePeriodSeconds: 1200  # a longer time period avoids that K8s can 
 nameOverride: ""
 fullnameOverride: ""
 
-podAnnotations: { }
 podLabels: { }
-
-podSecurityContext: { }
 
 nodeSelector: { }
 

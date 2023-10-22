@@ -17,7 +17,7 @@ spec:
         {{- toYaml $podsWithCapabilities.capabilities | nindent 8 }}
       minCount: {{ $podsWithCapabilities.minCount }}
       maxCount: {{ $podsWithCapabilities.maxCount }}
-      {{- with $.Values.podAnnotations }}
+      {{- with $podsWithCapabilities.annotations }}
       podAnnotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -88,7 +88,7 @@ spec:
                   exec:
                     command: [ "sudo /bin/sh", "-c", "while [ $(pgrep -l Agent.Worker | wc -l) -ne 0 ]; do sleep 1; done" ]
             {{- end }}
-          {{- with $.Values.podSecurityContext }}
+          {{- with $podsWithCapabilities.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
