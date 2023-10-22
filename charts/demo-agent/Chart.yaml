@@ -4,6 +4,6 @@ description: Demonstration chart that sets up Azure Pipeline Agents capable of r
 
 type: application
 
-version: 0.1.1
+version: 0.1.2
 
 appVersion: "0.1.0"  # not used
