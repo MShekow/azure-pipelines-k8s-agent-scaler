@@ -287,11 +287,10 @@ func ParseExtraAgentContainerDefinition(extraAgentContainers string) ([]corev1.C
 		}
 
 		extraAgentContainerDefinitions = append(extraAgentContainerDefinitions, corev1.Container{
-			Name:       elements[0],
-			Image:      elements[1],
-			Command:    []string{"/bin/sh"},
-			Args:       []string{"-c", "trap : TERM INT; sleep 9999999999d & wait"},
-			WorkingDir: AzureWorkingDirMountPath,
+			Name:    elements[0],
+			Image:   elements[1],
+			Command: []string{"/bin/sh"},
+			Args:    []string{"-c", "trap : TERM INT; sleep 9999999999d & wait"},
 			Resources: corev1.ResourceRequirements{
 				Limits: map[corev1.ResourceName]resource.Quantity{
 					corev1.ResourceCPU:    cpuQuantity,
