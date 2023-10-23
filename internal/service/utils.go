@@ -85,6 +85,8 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 // pipeline
 func CreateOrUpdateDummyAgents(ctx context.Context, poolId int64, azurePat string, httpClient *http.Client,
 	crName string, spec *apscalerv1.AutoScaledAgentSpec) ([]string, error) {
+	// TODO: if the CR is updated (e.g. with a new PodsWithCapabilities entry), this method should somehow detect this
+	//  and then do its work!
 	if _, exists := dummyAgentNames[crName]; exists {
 		return dummyAgentNames[crName], nil
 	}
