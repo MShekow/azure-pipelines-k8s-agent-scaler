@@ -117,7 +117,7 @@ contains your AZP Personal Access Token:
 `kubectl create secret generic azure-pat --from-literal=pat=YOUR-PAT-HERE --namespace <your-namespace>`
 
 Finally, create your desired `CustomResource` (see the [sample](sample/v1_autoscaledagent.yaml)) and apply it to the
-cluster (to `<your-namespace>`), or use the [demo-agent Helm chart](charts/demo-agent).
+cluster (to `<your-namespace>`), or use the [demo-agent Helm chart](demo-charts/demo-agent).
 
 ## Contributing
 
