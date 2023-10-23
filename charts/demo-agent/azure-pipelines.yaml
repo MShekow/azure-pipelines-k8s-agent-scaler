@@ -9,7 +9,7 @@ pool:
   name: your-agent-pool-name
 
 variables:
-  extraAgentContainersDynamic: "ubuntu,docker.io/library/ubuntu:22.04,250m,64Mi"
+  extraAgentContainersDynamic: "name=ubuntu,image=docker.io/library/ubuntu:22.04,cpu=250m,memory=64Mi"
 
 jobs:
   # This job demonstrates how to "dynamically" register an agent with an additional container (that is NOT defined in values.yaml of the demo-agent chart)
