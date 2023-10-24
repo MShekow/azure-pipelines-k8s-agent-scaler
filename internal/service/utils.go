@@ -346,9 +346,12 @@ func GetCapabilitiesMapFromString(capabilities string) *map[string]string {
 
 	capabilitiesList := strings.Split(capabilities, ";")
 	for _, capabilityStr := range capabilitiesList {
-		capabilityTuple := strings.Split(capabilityStr, "=")
-		if len(capabilityTuple) == 2 {
-			m[capabilityTuple[0]] = capabilityTuple[1]
+		// Note: strings.Cut() slices around the first(!) instance of sep, returning the text before and after sep
+		// We need this because an arg might look like this:
+		// ExtraAgentContainers=name=c,image=some-image:latest,cpu=500m,memory=2Gi
+		key, value, separatorWasFound := strings.Cut(capabilityStr, "=")
+		if separatorWasFound {
+			m[key] = value
 		}
 	}
 
