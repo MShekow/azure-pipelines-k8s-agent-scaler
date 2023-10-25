@@ -282,7 +282,7 @@ func (r *AutoScaledAgentReconciler) getPodsWithPhases(ctx context.Context, req c
 
 	for _, phase := range phases {
 		// Note: we use Field selectors (https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/)
-		// but even "chained" selectors use AND (instead of OR), so we need to make 2 queries
+		// but even "chained" selectors use AND (instead of OR), so we need to make a query for each phase in `phases`
 		podList := &corev1.PodList{}
 		opts := []client.ListOption{
 			client.InNamespace(req.NamespacedName.Namespace),
@@ -308,7 +308,7 @@ func (r *AutoScaledAgentReconciler) getPodsWithPhases(ctx context.Context, req c
 func getPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Client,
 	spec *apscalerv1.AutoScaledAgentSpec) (int64, error) {
 	// TODO move to another file
-	if cachedPoolName, ok := InMemoryAzurePipelinesPoolIdStore[spec.PoolName]; ok {
+	if cachedPoolName, ok := InMemoryAzurePipelinesPoolIdStore[spec.PoolName]; ok { // TODO also consider the org URL
 		return cachedPoolName, nil
 	}
 
