@@ -308,7 +308,7 @@ func (r *AutoScaledAgentReconciler) getPodsWithPhases(ctx context.Context, req c
 func getPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Client,
 	spec *apscalerv1.AutoScaledAgentSpec) (int64, error) {
 	// TODO move to another file
-	if cachedPoolName, ok := InMemoryAzurePipelinesPoolIdStore[spec.PoolName]; ok { // TODO also consider the org URL
+	if cachedPoolName, ok := InMemoryAzurePipelinesPoolIdStore[spec.OrganizationUrl+spec.PoolName]; ok {
 		return cachedPoolName, nil
 	}
 
@@ -356,7 +356,7 @@ func getPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Cl
 
 	poolId := int64(result.Value[0].ID)
 
-	InMemoryAzurePipelinesPoolIdStore[spec.PoolName] = poolId
+	InMemoryAzurePipelinesPoolIdStore[spec.OrganizationUrl+spec.PoolName] = poolId
 
 	return poolId, nil
 }
