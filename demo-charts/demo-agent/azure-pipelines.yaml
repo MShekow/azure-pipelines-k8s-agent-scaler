@@ -9,7 +9,7 @@ pool:
   name: your-agent-pool-name
 
 variables:
-  extraAgentContainersDynamic: "name=ubuntu,image=docker.io/library/ubuntu:22.04,cpu=250m,memory=64Mi"
+  extraAgentContainersDynamic: "name=ubuntu,image=docker.io/library/ubuntu:22.04,cpu=250m,memory=64Mi" # you could use AZP variables here
 
 jobs:
   # This job demonstrates how to "dynamically" register an agent with an additional container (that is NOT defined in values.yaml of the demo-agent chart)
@@ -19,7 +19,7 @@ jobs:
       demands: buildkit  # as to match the "capabilities" key of at least one array-element from values.yaml:podsWithCapabilities
     steps:
       # Note: you may have to replace arm64 with amd64
-      - script: curl -L https://github.com/MShekow/azure-pipelines-agent-registrator/releases/download/v1.2/azure-pipelines-agent-registrator_1.2_linux_arm64 -o agent-registrator && chmod +x agent-registrator
+      - script: curl -L https://github.com/MShekow/azure-pipelines-agent-registrator/releases/download/v1.3/azure-pipelines-agent-registrator_1.3_linux_arm64 -o agent-registrator && chmod +x agent-registrator
         displayName: download agent registrator binary
       - script: >
           ./agent-registrator
