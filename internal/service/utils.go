@@ -3,6 +3,8 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	apscalerv1 "github.com/MShekow/azure-pipelines-k8s-agent-scaler/api/v1"
@@ -19,6 +21,7 @@ import (
 
 var (
 	dummyAgentNames            = make(map[string][]string) // maps from AutoScaledAgent.Name to the list of dummy agent names
+	cachedCustomResourceHash   = make(map[string]string)   // maps from AutoScaledAgent.Name to a stringified hash of the CR data
 	lastDeadDummyAgentDeletion = time.Date(1999, 1, 1, 0, 0, 0, 0, time.Local)
 )
 
@@ -85,12 +88,22 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 // pipeline
 func CreateOrUpdateDummyAgents(ctx context.Context, poolId int64, azurePat string, httpClient *http.Client,
 	crName string, spec *apscalerv1.AutoScaledAgentSpec) ([]string, error) {
-	// TODO: if the CR is updated (e.g. with a new PodsWithCapabilities entry), this method should somehow detect this
-	//  and then do its work!
-	if _, exists := dummyAgentNames[crName]; exists {
+	logger := log.FromContext(ctx)
+
+	crHash, err := ComputeCustomResourceHash(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	returnCachedResult := true
+	previouslyKnownCrHash, exists := cachedCustomResourceHash[crName]
+	if !exists || previouslyKnownCrHash != crHash {
+		returnCachedResult = false
+	}
+
+	if returnCachedResult {
 		return dummyAgentNames[crName], nil
 	}
-	logger := log.FromContext(ctx)
 
 	var newDummyAgentNames []string
 
@@ -147,8 +160,25 @@ func CreateOrUpdateDummyAgents(ctx context.Context, poolId int64, azurePat strin
 	logger.Info("Successfully created/updated dummy agents", "dummyAgentNames", newDummyAgentNames)
 
 	dummyAgentNames[crName] = newDummyAgentNames
+	cachedCustomResourceHash[crName] = crHash
 
 	return newDummyAgentNames, nil
+}
+
+func ComputeCustomResourceHash(spec *apscalerv1.AutoScaledAgentSpec) (string, error) {
+	var b bytes.Buffer
+
+	// Encode AutoScaledAgentSpec as byte array
+	err := gob.NewEncoder(&b).Encode(&spec)
+	if err != nil {
+		return "", err
+	}
+
+	// Generate the hash from the byte array
+	h := sha256.New()
+	h.Write(b.Bytes())
+	hash := h.Sum(nil)
+	return fmt.Sprintf("%x", hash), nil
 }
 
 func getDummyAgentName(capabilities *map[string]string) string {
