@@ -5,9 +5,9 @@ home: https://github.com/MShekow/azure-pipelines-k8s-agent-scaler
 
 type: application
 
-version: 0.1.5
+version: 0.1.6
 
-appVersion: "2023.10.24"
+appVersion: "2023.10.25"
 
 dependencies:
   - name: azp-k8s-agent-scaler-operator-crds
