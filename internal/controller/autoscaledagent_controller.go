@@ -377,7 +377,6 @@ func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, req ctrl.R
 
 func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent,
 	podsWithCapabilities *apscalerv1.PodsWithCapabilities, capabilities *map[string]string) (string, error) {
-	// TODO there is a bug where ExtraAgentContainers env var is set twice on the AZP agent container
 	logger := log.FromContext(ctx)
 	podName := fmt.Sprintf("%s-%s", agent.Name, service.GenerateRandomString())
 
@@ -440,14 +439,7 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, req ctrl.Re
 		if err != nil {
 			return "", err
 		}
-		if len(extraAgentContainerDefs) > 0 {
-			pod.Spec.Containers = append(pod.Spec.Containers, extraAgentContainerDefs...)
-			azureDevOpsAgentContainer = &pod.Spec.Containers[0]
-			azureDevOpsAgentContainer.Env = append(azureDevOpsAgentContainer.Env, corev1.EnvVar{
-				Name:  service.ExtraAgentContainersAnnotationKey,
-				Value: extraAgentContainersStr,
-			})
-		}
+		pod.Spec.Containers = append(pod.Spec.Containers, extraAgentContainerDefs...)
 	}
 
 	if err := ctrl.SetControllerReference(agent, pod, r.Scheme); err != nil {
