@@ -166,6 +166,7 @@ func getDummyAgentName(capabilities *map[string]string) string {
 // avoid spamming the AZP API.
 func DeleteDeadDummyAgents(ctx context.Context, poolId int64, azurePat string, httpClient *http.Client,
 	spec *apscalerv1.AutoScaledAgentSpec, crName string, dummyAgentsToKeep []string) error {
+	// TODO make the hard-coded durations (see below, 30m, 2h, 5h) configurable
 	if time.Now().Add(-time.Minute * 30).Before(lastDeadDummyAgentDeletion) {
 		return nil
 	}

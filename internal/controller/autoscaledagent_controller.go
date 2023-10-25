@@ -377,6 +377,7 @@ func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, req ctrl.R
 
 func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent,
 	podsWithCapabilities *apscalerv1.PodsWithCapabilities, capabilities *map[string]string) (string, error) {
+	// TODO there is a bug where ExtraAgentContainers env var is set twice on the AZP agent container
 	logger := log.FromContext(ctx)
 	podName := fmt.Sprintf("%s-%s", agent.Name, service.GenerateRandomString())
 
@@ -811,6 +812,7 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 /*
 TODOs: (turn into GitHub Issues)
 
+- Integrate debug switch that can be dynamically turned on/off, e.g. by creating an (empty) file at an expected location
 - Set up Renovate Bot
 - Terminate all idle agent pods that were created with a different controller-manager version.
   For instance, in the Dockerfile we could have an ARG CONTROLLER_MANAGER_BUILD_ID (turned into an env var) with some default value
