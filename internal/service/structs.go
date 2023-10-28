@@ -1,9 +1,7 @@
 package service
 
 import (
-	"fmt"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	"reflect"
 	"strings"
 	"time"
@@ -265,86 +263,6 @@ func (rpw *RunningPodsWrapper) GetInexactMatch(capabilities *map[string]string) 
 	}
 
 	return &result
-}
-
-// ParseExtraAgentContainerDefinition takes a string such as
-// "name=ubuntu,image=docker.io/library/ubuntu:22.04,cpu=250m,memory=64Mi||name=postgresql,image=docker.io/library/postgres:14,cpu=250m,memory=1Gi"
-// (where the "cpu" and "memory" attributes are optional) and converts them to an
-// array of Container objects
-func ParseExtraAgentContainerDefinition(extraAgentContainers string) ([]corev1.Container, error) {
-	var extraAgentContainerDefinitions []corev1.Container
-
-	definitionStrings := strings.Split(extraAgentContainers, "||")
-	for _, definitionString := range definitionStrings {
-		attributes := strings.Split(definitionString, ",")
-		var name, image, cpu, memory string
-		for _, attribute := range attributes {
-			keyValues := strings.Split(attribute, "=")
-			if len(keyValues) != 2 {
-				return nil, fmt.Errorf("malformed extra agent containers attribute: %s", attribute)
-			}
-			if keyValues[0] == "name" {
-				name = keyValues[1]
-			} else if keyValues[0] == "image" {
-				image = keyValues[1]
-			} else if keyValues[0] == "cpu" {
-				cpu = keyValues[1]
-			} else if keyValues[0] == "memory" {
-				memory = keyValues[1]
-			}
-		}
-
-		if name == "" || image == "" {
-			return nil, fmt.Errorf("malformed extra agent containers definition: %s", definitionString)
-		}
-
-		container := corev1.Container{
-			Name:    name,
-			Image:   image,
-			Command: []string{"/bin/sh"},
-			Args:    []string{"-c", "trap : TERM INT; sleep 9999999999d & wait"},
-			VolumeMounts: []corev1.VolumeMount{{
-				Name:      AzureWorkingDirMountName,
-				MountPath: AzureWorkingDirMountPath,
-			}},
-			Lifecycle: &corev1.Lifecycle{
-				PreStop: &corev1.LifecycleHandler{
-					Exec: &corev1.ExecAction{
-						Command: []string{"/bin/sh", "-c", "while [ $(pgrep -l Agent.Worker | wc -l) -ne 0 ]; do sleep 1; done"},
-					},
-				},
-			},
-			ImagePullPolicy: corev1.PullAlways,
-		}
-
-		if cpu != "" {
-			cpuQuantity, err := resource.ParseQuantity(cpu)
-			if err != nil {
-				return nil, err
-			}
-
-			container.Resources.Requests = map[corev1.ResourceName]resource.Quantity{corev1.ResourceCPU: cpuQuantity}
-			container.Resources.Limits = map[corev1.ResourceName]resource.Quantity{corev1.ResourceCPU: cpuQuantity}
-		}
-
-		if memory != "" {
-			memoryQuantity, err := resource.ParseQuantity(memory)
-			if err != nil {
-				return nil, err
-			}
-
-			if container.Resources.Requests == nil {
-				container.Resources.Requests = make(map[corev1.ResourceName]resource.Quantity)
-				container.Resources.Limits = make(map[corev1.ResourceName]resource.Quantity)
-			}
-			container.Resources.Requests[corev1.ResourceMemory] = memoryQuantity
-			container.Resources.Limits[corev1.ResourceMemory] = memoryQuantity
-		}
-
-		extraAgentContainerDefinitions = append(extraAgentContainerDefinitions, container)
-	}
-
-	return extraAgentContainerDefinitions, nil
 }
 
 type PvcExhaustionError struct {
