@@ -166,8 +166,15 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			agentsToCreate := *podsWithCapabilities.MinCount - matchingPodsCount
 			if err := r.createAgents(ctx, req, &autoScaledAgent, agentsToCreate, &podsWithCapabilities,
 				&podsWithCapabilities.Capabilities); err != nil {
-				logger.Info("failed to create agent that satisfies minCount")
-				return ctrl.Result{}, err
+				if exhaustionError, isExhaustionError := err.(*service.PvcExhaustionError); isExhaustionError {
+					// Don't return an error to the controller-runtime/framework, because it would be immediately calling
+					// Reconcile() again very often, which would not help. Instead, we swallow the error here.
+					logger.Info("Reconcile(): failed to create agent that satisfies minCount because of PVC exhaustion", "reusableCacheVolumeName", exhaustionError.ReusableCacheVolumeName)
+					continue
+				} else {
+					logger.Info("failed to create agent that satisfies minCount")
+					return ctrl.Result{}, err
+				}
 			}
 			logger.Info("successfully created agents to satisfy minCount", "agentsToCreate", agentsToCreate)
 			continue // Do not run the remaining code, to avoid the risk of running conflicting logic in one iteration
@@ -201,8 +208,16 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				podCapabilitiesMap := service.GetCapabilitiesMapFromString(capabilitiesStr)
 				if err := r.createAgents(ctx, req, &autoScaledAgent, 1, &podsWithCapabilities,
 					podCapabilitiesMap); err != nil {
-					logger.Info("unable to create agent for job", "podCapabilitiesMap", podCapabilitiesMap)
-					return ctrl.Result{}, err
+					if exhaustionError, isExhaustionError := err.(*service.PvcExhaustionError); isExhaustionError {
+						// Don't return an error to the controller-runtime/framework, because it would be immediately calling
+						// Reconcile() again very often, which would not help. Instead, we swallow the error here.
+						logger.Info("Reconcile(): unable to create agent for job because of PVC exhaustion",
+							"reusableCacheVolumeName", exhaustionError.ReusableCacheVolumeName,
+							"podCapabilitiesMap", podCapabilitiesMap)
+					} else {
+						logger.Info("unable to create agent for job", "podCapabilitiesMap", podCapabilitiesMap)
+						return ctrl.Result{}, err
+					}
 				}
 				logger.Info("successfully created agent for job", "podCapabilitiesMap", podCapabilitiesMap)
 
@@ -462,8 +477,6 @@ func (r *AutoScaledAgentReconciler) createAgent(ctx context.Context, req ctrl.Re
 func (r *AutoScaledAgentReconciler) assignOrCreatePvcs(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent, pod *corev1.Pod) error {
 	logger := log.FromContext(ctx)
 
-	// TODO somehow check whether someone/thing already requested the deletion(!) of an unpromised PVC, so that we don't reuse it
-
 	if len(agent.Spec.ReusableCacheVolumes) == 0 {
 		return nil
 	}
@@ -487,8 +500,7 @@ func (r *AutoScaledAgentReconciler) assignOrCreatePvcs(ctx context.Context, req 
 		for _, volumeMount := range container.VolumeMounts {
 			if matchingCacheVolume := service.GetMatchingCacheVolume(volumeMount.Name, agent.Spec.ReusableCacheVolumes); matchingCacheVolume != nil {
 				var cacheVolumePvc *corev1.PersistentVolumeClaim
-
-				if availablePvc := service.GetAvailablePvc(pvcs.Items, volumeMount.Name); availablePvc != nil {
+				if availablePvc := service.GetUnpromisedPvc(pvcs.Items, volumeMount.Name); availablePvc != nil {
 					availablePvc.Annotations[service.ReusableCacheVolumePromisedAnnotationKey] = pod.Name
 					err := r.Update(ctx, availablePvc)
 					if err != nil {
@@ -498,6 +510,10 @@ func (r *AutoScaledAgentReconciler) assignOrCreatePvcs(ctx context.Context, req 
 					logger.Info("assignOrCreatePvcs(): using existing PVC for cache volume", "volumeName", volumeMount.Name, "pvcName", availablePvc.Name)
 					cacheVolumePvc = availablePvc
 				} else {
+					if service.IsPvcLimitExceeded(agent, matchingCacheVolume.Name, pvcs.Items) {
+						return &service.PvcExhaustionError{ReusableCacheVolumeName: matchingCacheVolume.Name}
+					}
+
 					// create a new PVC
 					pvcName := fmt.Sprintf("%s-%s", agent.Name, service.GenerateRandomString())
 
@@ -599,10 +615,11 @@ func (r *AutoScaledAgentReconciler) deletePromisedAnnotationFromPvcs(ctx context
 				}
 			}
 
-			// Update PVC
+			// Update PVC, removing the "promised" annotation
 			// Note: in rare cases pods that were just created in a previous Reconcile() cycle may not be part of
 			// <podList>, because of the API client cache (where the Pod would appear just mere sections later), thus
-			// HasPodPermanentlyDisappeared() ensures that the pod cannot be found for a while (several seconds), as a workaround
+			// HasPodPermanentlyDisappeared() ensures that the pod cannot be found for a while (several seconds),
+			// as a workaround, giving the client cache time to catch up
 			if (pod == nil && service.HasPodPermanentlyDisappeared(promisedPodName)) || (pod != nil && (pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed)) {
 				delete(pvc.Annotations, service.ReusableCacheVolumePromisedAnnotationKey)
 				err := r.Update(ctx, &pvc)

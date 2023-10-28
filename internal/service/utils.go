@@ -433,7 +433,7 @@ func GetMatchingCacheVolume(volumeName string, reusableVolumes []apscalerv1.Reus
 	return nil
 }
 
-func GetAvailablePvc(pvcs []corev1.PersistentVolumeClaim, volumeName string) *corev1.PersistentVolumeClaim {
+func GetUnpromisedPvc(pvcs []corev1.PersistentVolumeClaim, volumeName string) *corev1.PersistentVolumeClaim {
 	for _, pvc := range pvcs {
 		if vn := pvc.Annotations[ReusableCacheVolumeNameAnnotationKey]; vn == volumeName {
 			if _, exists := pvc.Annotations[ReusableCacheVolumePromisedAnnotationKey]; !exists {
@@ -442,6 +442,51 @@ func GetAvailablePvc(pvcs []corev1.PersistentVolumeClaim, volumeName string) *co
 		}
 	}
 	return nil
+}
+
+// ComputePvcMaxCountsPerReusableCacheVolume computes a dict that maps from the
+// name of a reusable cache volume to the maximum number of PVC instances we want
+// to instantiate. It only contains entries for those reusable cache volumes that
+// are actually used by at least one Pod. The goal is to avoid creating too many
+// PVCs, resulting from the problem that the removal of the "promised" label of
+// PVCs is slow.
+func ComputePvcMaxCountsPerReusableCacheVolume(agent *apscalerv1.AutoScaledAgent) *map[string]int {
+	pvcMaxCounts := map[string]int{}
+
+	for _, podsWithCapabilities := range agent.Spec.PodsWithCapabilities {
+		reusableCacheVolumesUsedByThisPod := map[string]bool{} // use map to implement set
+		for _, container := range podsWithCapabilities.PodTemplateSpec.Spec.Containers {
+			for _, volumeMount := range container.VolumeMounts {
+				if matchingCacheVolume := GetMatchingCacheVolume(volumeMount.Name, agent.Spec.ReusableCacheVolumes); matchingCacheVolume != nil {
+					reusableCacheVolumesUsedByThisPod[matchingCacheVolume.Name] = true
+				}
+			}
+		}
+
+		for usedReusableCacheVolumeName, _ := range reusableCacheVolumesUsedByThisPod {
+			if count, ok := pvcMaxCounts[usedReusableCacheVolumeName]; ok {
+				pvcMaxCounts[usedReusableCacheVolumeName] = count + int(*podsWithCapabilities.MaxCount)
+			} else {
+				pvcMaxCounts[usedReusableCacheVolumeName] = int(*podsWithCapabilities.MaxCount)
+			}
+		}
+	}
+
+	return &pvcMaxCounts
+}
+
+func IsPvcLimitExceeded(agent *apscalerv1.AutoScaledAgent, cacheVolumeName string, pvcs []corev1.PersistentVolumeClaim) bool {
+	maxPvcCounts := ComputePvcMaxCountsPerReusableCacheVolume(agent)
+
+	// Find the matching, already-existing PVCs (all of which are already promised) and count them
+	matchingPvcCount := 0
+	for _, pvc := range pvcs {
+		if pvc.Annotations[ReusableCacheVolumeNameAnnotationKey] == cacheVolumeName {
+			matchingPvcCount += 1
+		}
+	}
+
+	return matchingPvcCount >= (*maxPvcCounts)[cacheVolumeName]
 }
 
 var disappearedPods = make(map[string]time.Time)

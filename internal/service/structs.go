@@ -346,3 +346,11 @@ func ParseExtraAgentContainerDefinition(extraAgentContainers string) ([]corev1.C
 
 	return extraAgentContainerDefinitions, nil
 }
+
+type PvcExhaustionError struct {
+	ReusableCacheVolumeName string
+}
+
+func (e *PvcExhaustionError) Error() string {
+	return e.ReusableCacheVolumeName
+}
