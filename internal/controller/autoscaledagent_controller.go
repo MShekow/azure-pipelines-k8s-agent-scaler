@@ -476,8 +476,12 @@ func (r *AutoScaledAgentReconciler) assignOrCreatePvcs(ctx context.Context, req 
 	if err := r.List(ctx, pvcs, opts...); err != nil {
 		return err
 	}
-	// TODO check how the returned PVCs are sorted. It would make sense to enforce alphabetical sorting, so that e.g.
-	//  a single BuildKit pod always tries to use the _same_ PVC (even when there are 2 or more available)
+
+	// As we don't know how the cached client's results are internally sorted, we sort the PVCs by name alphabetically,
+	// because a stable sorting order should improve cache locality (because new pods always use the SAME PVCs)
+	sort.Slice(pvcs.Items, func(i, j int) bool {
+		return pvcs.Items[i].Name < pvcs.Items[j].Name
+	})
 
 	for _, container := range pod.Spec.Containers {
 		for _, volumeMount := range container.VolumeMounts {
