@@ -35,12 +35,48 @@ type AutoScaledAgentSpec struct {
 	// OrganizationUrl is the HTTPS URL to the organization, e.g. https://dev.azure.com/foobar if you use the SaaS version
 	OrganizationUrl string `json:"organizationUrl,omitempty"`
 
+	// Stores the name of a secret that has a key called "pat" whose value is the Azure DevOps Personal Access Token
 	PersonalAccessTokenSecretName string `json:"personalAccessTokenSecretName,omitempty"`
 
+	// How many of the most recently started agent Pods that are now in completed / terminated state should be kept.
+	// The controller automatically deletes all other terminated agent pods exceeding this count
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default:=5
 	MaxTerminatedPodsToKeep *int32 `json:"maxTerminatedPodsToKeep,omitempty"`
+
+	// How often the garbage collection (=deleting offline Azure DevOps agents) is run.
+	// Expects an unsigned duration string of decimal numbers each with optional
+	// fraction and a unit suffix, eg "300ms", "1.5h" or "2h45m".
+	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+	// +kubebuilder:default:="30m"
+	// +kubebuilder:validation:Pattern="^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+	// +kubebuilder:validation:Type:=string
+	// +optional
+	DummyAgentGarbageCollectionInterval *metav1.Duration `json:"dummyAgentGarbageCollectionInterval,omitempty"`
+
+	// "Dummy agents" refer to agents registered at run-time by the agent registrator CLI companion tool.
+	// The agent garbage collection only affects dummy agents that have at least this age.
+	// Expects an unsigned duration string of decimal numbers each with optional
+	// fraction and a unit suffix, eg "300ms", "1.5h" or "2h45m".
+	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+	// +kubebuilder:default:="2h"
+	// +kubebuilder:validation:Pattern="^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+	// +kubebuilder:validation:Type:=string
+	// +optional
+	DummyAgentDeletionMinAge *metav1.Duration `json:"dummyAgentDeletionMinAge,omitempty"`
+
+	// "Normal offline agents" refer to agents that were really running in the K8s cluster (some time ago), but were
+	// not properly unregistered (e.g. because the Pod crashed).
+	// The agent garbage collection only deletes normal offline agents that have at least this age.
+	// Expects an unsigned duration string of decimal numbers each with optional
+	// fraction and a unit suffix, eg "300ms", "1.5h" or "2h45m".
+	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+	// +kubebuilder:default:="5h"
+	// +kubebuilder:validation:Pattern="^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+	// +kubebuilder:validation:Type:=string
+	// +optional
+	NormalOfflineAgentDeletionMinAge *metav1.Duration `json:"normalOfflineAgentDeletionMinAge,omitempty"`
 
 	// +optional
 	ReusableCacheVolumes []ReusableCacheVolume `json:"reusableCacheVolumes,omitempty"`

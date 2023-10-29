@@ -36,16 +36,52 @@ spec:
           spec:
             description: AutoScaledAgentSpec defines the desired state of AutoScaledAgent
             properties:
+              dummyAgentDeletionMinAge:
+                default: 2h
+                description: '"Dummy agents" refer to agents registered at run-time
+                  by the agent registrator CLI companion tool. The agent garbage collection
+                  only affects dummy agents that have at least this age. Expects an
+                  unsigned duration string of decimal numbers each with optional fraction
+                  and a unit suffix, eg "300ms", "1.5h" or "2h45m". Valid time units
+                  are "ns", "us" (or "µs"), "ms", "s", "m", "h".'
+                pattern: ^[0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$
+                type: string
+              dummyAgentGarbageCollectionInterval:
+                default: 30m
+                description: How often the garbage collection (=deleting offline Azure
+                  DevOps agents) is run. Expects an unsigned duration string of decimal
+                  numbers each with optional fraction and a unit suffix, eg "300ms",
+                  "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms",
+                  "s", "m", "h".
+                pattern: ^[0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$
+                type: string
               maxTerminatedPodsToKeep:
                 default: 5
+                description: How many of the most recently started agent Pods that
+                  are now in completed / terminated state should be kept. The controller
+                  automatically deletes all other terminated agent pods exceeding
+                  this count
                 format: int32
                 minimum: 0
                 type: integer
+              normalOfflineAgentDeletionMinAge:
+                default: 5h
+                description: '"Normal offline agents" refer to agents that were really
+                  running in the K8s cluster (some time ago), but were not properly
+                  unregistered (e.g. because the Pod crashed). The agent garbage collection
+                  only deletes normal offline agents that have at least this age.
+                  Expects an unsigned duration string of decimal numbers each with
+                  optional fraction and a unit suffix, eg "300ms", "1.5h" or "2h45m".
+                  Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".'
+                pattern: ^[0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$
+                type: string
               organizationUrl:
                 description: OrganizationUrl is the HTTPS URL to the organization,
                   e.g. https://dev.azure.com/foobar if you use the SaaS version
                 type: string
               personalAccessTokenSecretName:
+                description: Stores the name of a secret that has a key called "pat"
+                  whose value is the Azure DevOps Personal Access Token
                 type: string
               podsWithCapabilities:
                 items:

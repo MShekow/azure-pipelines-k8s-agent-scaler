@@ -198,8 +198,7 @@ func getDummyAgentName(capabilities *map[string]string) string {
 // avoid spamming the AZP API.
 func DeleteDeadDummyAgents(ctx context.Context, poolId int64, azurePat string, httpClient *http.Client,
 	spec *apscalerv1.AutoScaledAgentSpec, crName string, dummyAgentsToKeep []string) error {
-	// TODO make the hard-coded durations (see below, 30m, 2h, 5h) configurable
-	if time.Now().Add(-time.Minute * 30).Before(lastDeadDummyAgentDeletion) {
+	if time.Now().Add(-1 * spec.DummyAgentGarbageCollectionInterval.Duration).Before(lastDeadDummyAgentDeletion) {
 		return nil
 	}
 
@@ -245,7 +244,7 @@ func DeleteDeadDummyAgents(ctx context.Context, poolId int64, azurePat string, h
 
 		// Delete dummy agents
 		if strings.HasPrefix(agent.Name, DummyAgentNamePrefix) {
-			cutOffDate := time.Now().Add(-time.Hour * 2)
+			cutOffDate := time.Now().Add(-1 * spec.DummyAgentDeletionMinAge.Duration)
 			if agent.CreatedOn.Before(cutOffDate) {
 				err := DeleteAgent(ctx, spec.OrganizationUrl, poolId, azurePat, httpClient, agent.Id)
 				if err != nil {
@@ -257,7 +256,7 @@ func DeleteDeadDummyAgents(ctx context.Context, poolId int64, azurePat string, h
 
 		// Delete "normal" agents that are offline for a while for some reasons, most likely because K8s killed them
 		if strings.HasPrefix(agent.Name, crName) {
-			cutOffDate := time.Now().Add(-time.Hour * 5)
+			cutOffDate := time.Now().Add(-1 * spec.NormalOfflineAgentDeletionMinAge.Duration)
 			if agent.CreatedOn.Before(cutOffDate) {
 				err := DeleteAgent(ctx, spec.OrganizationUrl, poolId, azurePat, httpClient, agent.Id)
 				if err != nil {
@@ -269,6 +268,8 @@ func DeleteDeadDummyAgents(ctx context.Context, poolId int64, azurePat string, h
 	}
 
 	lastDeadDummyAgentDeletion = time.Now()
+
+	logger.Info("Successfully completed garbage collection of dead agents")
 
 	return nil
 }
