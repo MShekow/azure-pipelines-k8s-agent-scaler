@@ -19,18 +19,15 @@ package controller
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/MShekow/azure-pipelines-k8s-agent-scaler/internal/service"
-	"io"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
-	"net/http"
 	"sort"
 	"time"
 
@@ -42,7 +39,6 @@ import (
 	apscalerv1 "github.com/MShekow/azure-pipelines-k8s-agent-scaler/api/v1"
 )
 
-var InMemoryAzurePipelinesPoolIdStore = make(map[string]int64)
 var jobOwnerKey = ".metadata.controller"
 
 // AutoScaledAgentReconciler reconciles a AutoScaledAgent object
@@ -101,7 +97,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	poolId, err := getPoolIdFromName(ctx, azurePat, httpClient, &autoScaledAgent.Spec)
+	poolId, err := service.GetPoolIdFromName(ctx, azurePat, httpClient, &autoScaledAgent.Spec)
 	if err != nil {
 		logger.Info("getPoolIdFromName failed")
 		return ctrl.Result{}, err
@@ -318,62 +314,6 @@ func (r *AutoScaledAgentReconciler) getPodsWithPhases(ctx context.Context, req c
 	}
 
 	return allPods, nil
-}
-
-func getPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Client,
-	spec *apscalerv1.AutoScaledAgentSpec) (int64, error) {
-	// TODO move to another file
-	if cachedPoolName, ok := InMemoryAzurePipelinesPoolIdStore[spec.OrganizationUrl+spec.PoolName]; ok {
-		return cachedPoolName, nil
-	}
-
-	url := fmt.Sprintf("%s/_apis/distributedtask/pools?poolName=%s", spec.OrganizationUrl, spec.PoolName)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return 0, err
-	}
-
-	req.SetBasicAuth("", azurePat)
-	if err != nil {
-		return 0, err
-	}
-
-	response, err := httpClient.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer response.Body.Close()
-
-	bytes, err := io.ReadAll(response.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	if !(response.StatusCode >= 200 && response.StatusCode <= 299) {
-		return 0, fmt.Errorf("Azure DevOps REST API returned error. url: %s status: %d response: %s", url, response.StatusCode, string(bytes))
-	}
-
-	var result service.AzurePipelinesApiPoolNameResponse
-	err = json.Unmarshal(bytes, &result)
-	if err != nil {
-		return 0, err
-	}
-
-	count := len(result.Value)
-	if count == 0 {
-		return 0, fmt.Errorf("agent pool with name `%s` not found in response", spec.PoolName)
-	}
-
-	if count != 1 {
-		return 0, fmt.Errorf("found %d agent pools with name `%s`", count, spec.PoolName)
-	}
-
-	poolId := int64(result.Value[0].ID)
-
-	InMemoryAzurePipelinesPoolIdStore[spec.OrganizationUrl+spec.PoolName] = poolId
-
-	return poolId, nil
 }
 
 func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent, count int32,

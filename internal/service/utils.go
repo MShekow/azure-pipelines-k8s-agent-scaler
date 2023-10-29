@@ -24,6 +24,7 @@ var (
 	dummyAgentNames            = make(map[string][]string) // maps from AutoScaledAgent.Name to the list of dummy agent names
 	cachedCustomResourceHash   = make(map[string]string)   // maps from AutoScaledAgent.Name to a stringified hash of the CR data
 	lastDeadDummyAgentDeletion = time.Date(1999, 1, 1, 0, 0, 0, 0, time.Local)
+	cachedAzpPoolIds           = make(map[string]int64)
 )
 
 func CreateHTTPClient() *http.Client {
@@ -593,4 +594,60 @@ func ParseExtraAgentContainerDefinition(extraAgentContainers string) ([]corev1.C
 	}
 
 	return extraAgentContainerDefinitions, nil
+}
+
+func GetPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Client,
+	spec *apscalerv1.AutoScaledAgentSpec) (int64, error) {
+	cacheKey := spec.OrganizationUrl + spec.PoolName
+	if cachedPoolName, ok := cachedAzpPoolIds[cacheKey]; ok {
+		return cachedPoolName, nil
+	}
+
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools?poolName=%s", spec.OrganizationUrl, spec.PoolName)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	req.SetBasicAuth("", azurePat)
+	if err != nil {
+		return 0, err
+	}
+
+	response, err := httpClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+
+	bytes, err := io.ReadAll(response.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	if !(response.StatusCode >= 200 && response.StatusCode <= 299) {
+		return 0, fmt.Errorf("Azure DevOps REST API returned error. url: %s status: %d response: %s", url, response.StatusCode, string(bytes))
+	}
+
+	var result AzurePipelinesApiPoolNameResponse
+	err = json.Unmarshal(bytes, &result)
+	if err != nil {
+		return 0, err
+	}
+
+	count := len(result.Value)
+	if count == 0 {
+		return 0, fmt.Errorf("agent pool with name `%s` not found in response", spec.PoolName)
+	}
+
+	if count != 1 {
+		return 0, fmt.Errorf("found %d agent pools with name `%s`", count, spec.PoolName)
+	}
+
+	poolId := int64(result.Value[0].ID)
+
+	cachedAzpPoolIds[cacheKey] = poolId
+
+	return poolId, nil
 }
