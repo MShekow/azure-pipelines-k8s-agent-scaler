@@ -436,6 +436,14 @@ func (r *AutoScaledAgentReconciler) assignOrCreatePvcs(ctx context.Context, req 
 		return pvcs.Items[i].Name < pvcs.Items[j].Name
 	})
 
+	// TODO filter out all those PVCs from `pvcs` that are already marked as deleted - is there a deletion timestamp?
+	// Example scenario: user reduced maxCount of
+	// some pod to a smaller number, then decides to manually delete the excess PVCs
+	// via kubectl. However, maxTerminatedPodsToKeep is set to a larger number, and
+	// K8s delays deleting PVCs that are used by at least one Pod (even
+	// Terminated/completed Pods). Our controller would keep assigning the PVC to other Pods, and the user
+	// would wonder why the PVC deletion is permanently hanging.
+
 	for _, container := range pod.Spec.Containers {
 		for _, volumeMount := range container.VolumeMounts {
 			if matchingCacheVolume := service.GetMatchingCacheVolume(volumeMount.Name, agent.Spec.ReusableCacheVolumes); matchingCacheVolume != nil {
