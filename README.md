@@ -119,9 +119,18 @@ contains your AZP Personal Access Token:
 Finally, create your desired `CustomResource` (see the [sample](sample/v1_autoscaledagent.yaml)) and apply it to the
 cluster (to `<your-namespace>`), or use the [demo-agent Helm chart](demo-charts/demo-agent).
 
-## Contributing
+## Debugging
 
-// TODO(user): Add detailed information on how you would like others to contribute to this project
+Check the logs of the controller Pod/container to identify problems.
+
+If your AZP jobs are pending (and you think that the operator should create Pods, but nothing happens and there is no
+log output either), you can temporarily enable additional debug-prints:
+
+- Execute into the controller's container, which comes with a minimal shell that only supports creating and deleting files
+- Run `touch /home/nonroot/debug` to enable debug printing
+- Run `rm /home/nonroot/debug` to disable debug printing again
+
+## Development
 
 ### How it works
 

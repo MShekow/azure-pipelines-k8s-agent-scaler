@@ -22,6 +22,7 @@ limitations under the License.
 package v1
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -90,6 +91,21 @@ func (in *AutoScaledAgentSpec) DeepCopyInto(out *AutoScaledAgentSpec) {
 	if in.MaxTerminatedPodsToKeep != nil {
 		in, out := &in.MaxTerminatedPodsToKeep, &out.MaxTerminatedPodsToKeep
 		*out = new(int32)
+		**out = **in
+	}
+	if in.DummyAgentGarbageCollectionInterval != nil {
+		in, out := &in.DummyAgentGarbageCollectionInterval, &out.DummyAgentGarbageCollectionInterval
+		*out = new(metav1.Duration)
+		**out = **in
+	}
+	if in.DummyAgentDeletionMinAge != nil {
+		in, out := &in.DummyAgentDeletionMinAge, &out.DummyAgentDeletionMinAge
+		*out = new(metav1.Duration)
+		**out = **in
+	}
+	if in.NormalOfflineAgentDeletionMinAge != nil {
+		in, out := &in.NormalOfflineAgentDeletionMinAge, &out.NormalOfflineAgentDeletionMinAge
+		*out = new(metav1.Duration)
 		**out = **in
 	}
 	if in.ReusableCacheVolumes != nil {

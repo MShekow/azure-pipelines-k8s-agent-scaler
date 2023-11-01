@@ -33,6 +33,9 @@ spec:
           image: {{ include "azp-k8s-agent-scaler-operator.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: manager
+          env:
+            - name: DEBUG_FILE_PATH
+              value: "/home/nonroot/debug"
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           livenessProbe:

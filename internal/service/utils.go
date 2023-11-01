@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"math/rand"
 	"net/http"
+	"os"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sort"
 	"strings"
@@ -72,6 +73,10 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 		return nil, err
 	}
 
+	if IsVerboseDebugLoggingEnabled() {
+		fmt.Printf("Jobs (raw JSON response): %s\n================\n", b)
+	}
+
 	pendingJobs := PendingJobsWrapper{}
 
 	for _, jobRequestFromApi := range jobRequestsFromApi.Value {
@@ -80,6 +85,10 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 		}
 
 		pendingJobs.AddJobRequest(&jobRequestFromApi)
+	}
+
+	if IsVerboseDebugLoggingEnabled() {
+		fmt.Printf("Pending jobs after parsing: %#v\n================\n", pendingJobs)
 	}
 
 	return &pendingJobs, nil
@@ -628,7 +637,10 @@ func GetPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Cl
 	}
 
 	if !(response.StatusCode >= 200 && response.StatusCode <= 299) {
-		return 0, fmt.Errorf("Azure DevOps REST API returned error. url: %s status: %d response: %s", url, response.StatusCode, string(bytes))
+		if IsVerboseDebugLoggingEnabled() {
+			fmt.Printf("Response: %s\n", string(bytes))
+		}
+		return 0, fmt.Errorf("Azure DevOps REST API returned error. url: %s status: %d", url, response.StatusCode)
 	}
 
 	var result AzurePipelinesApiPoolNameResponse
@@ -651,4 +663,12 @@ func GetPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Cl
 	cachedAzpPoolIds[cacheKey] = poolId
 
 	return poolId, nil
+}
+
+func IsVerboseDebugLoggingEnabled() bool {
+	debugFilePath := os.Getenv(DebugLogEnvVarName)
+	if _, err := os.Stat(debugFilePath); err == nil {
+		return true
+	}
+	return false
 }

@@ -24,11 +24,21 @@ COPY internal/ internal/
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
+# use musl busybox since it's staticly compiled on all platforms
+FROM busybox:musl AS busybox
+
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY --from=builder /workspace/manager .
+
+# Add a minimal shell that is only capable to delete and create files in "/home/nonroot"
+# (minimal attack surface, for DEBUG_FILE_PATH)
+COPY --from=busybox /bin/sh /bin/sh
+COPY --from=busybox /bin/touch /bin/touch
+COPY --from=busybox /bin/rm /bin/rm
+
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
