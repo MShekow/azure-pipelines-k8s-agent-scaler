@@ -774,10 +774,12 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 TODOs: (turn into GitHub Issues)
 
 - Integrate debug switch that can be dynamically turned on/off, e.g. by creating an (empty) file at an expected location
+- Write tests
 - Set up Renovate Bot
 - Terminate all idle agent pods that were created with a different controller-manager version.
   For instance, in the Dockerfile we could have an ARG CONTROLLER_MANAGER_BUILD_ID (turned into an env var) with some default value
   which is overwritten by the GHA workflow
+- Implement Status and Events
 - Min/Max-scaling based on a schedule
 
 
