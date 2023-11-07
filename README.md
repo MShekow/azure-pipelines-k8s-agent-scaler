@@ -63,6 +63,11 @@ Features of `azure-pipelines-k8s-agent-scaler`:
 - Ability to specify multiple pod configurations, each one for a different set of Azure Pipeline _capabilities_. For
   each pod, you can configure a min/max count for the pods, and define several _sidecar containers_, e.g. BuildKit, or
   any other tools you need in your pipeline
+    - Because sidecar containers are _regular_, statically-defined containers (not _ephemeral_ containers), you
+      can `kubectl exec` into them. This is useful when you build pipelines and run into problems, e.g. the container
+      crashing. Using `kubectl exec`, you can invoke debugging tools (like `top` or `ps`). You can also temporarily add
+      a `sleep N` statement in your pipeline YAML for the problematic `bash: ...` step, and then _interactively_ run
+      different commands in the container directly, until you figure out the correct command.
 - Automatic _termination_ of agent pods: once the AZP agent container has terminated, `azure-pipelines-k8s-agent-scaler`
   will automatically stop all other sidecar containers, to transition the pod into a terminated state
 - Automatic _deletion_ of terminated pods (with the configurable ability to keep the N most recently terminated pods,
@@ -126,7 +131,8 @@ Check the logs of the controller Pod/container to identify problems.
 If your AZP jobs are pending (and you think that the operator should create Pods, but nothing happens and there is no
 log output either), you can temporarily enable additional debug-prints:
 
-- Execute into the controller's container, which comes with a minimal shell that only supports creating and deleting files
+- Execute into the controller's container, which comes with a minimal shell that only supports creating and deleting
+  files
 - Run `touch /home/nonroot/debug` to enable debug printing
 - Run `rm /home/nonroot/debug` to disable debug printing again
 
