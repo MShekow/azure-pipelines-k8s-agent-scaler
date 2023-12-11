@@ -327,7 +327,7 @@ func (r *AutoScaledAgentReconciler) createAgents(ctx context.Context, req ctrl.R
 		if podName, err := r.createAgent(ctx, req, agent, podsWithCapabilities, capabilities); err != nil {
 			return err
 		} else {
-			logger.Info("createAgents(): successfully created agent pod", "podName", podName)
+			logger.Info("createAgents(): successfully created agent pod", "podName", podName, "capabilities", capabilities)
 		}
 	}
 
