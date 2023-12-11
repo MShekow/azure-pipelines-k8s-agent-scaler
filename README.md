@@ -115,6 +115,8 @@ Examples:
 
 For a **production** deployment, it is recommended to use
 the [Helm chart](https://mshekow.github.io/azure-pipelines-k8s-agent-scaler/) instead.
+There is also a tutorial
+available [here](https://www.augmentedmind.de/2023/12/10/azure-pipelines-agents-kubernetes-operator/).
 
 Next, create a dedicated Kubernetes _namespace_ that hosts your AZP agent `Pods`. Inside it, create a `Secret` that
 contains your AZP Personal Access Token:
