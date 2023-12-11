@@ -26,6 +26,7 @@ var (
 	cachedCustomResourceHash   = make(map[string]string)   // maps from AutoScaledAgent.Name to a stringified hash of the CR data
 	lastDeadDummyAgentDeletion = time.Date(1999, 1, 1, 0, 0, 0, 0, time.Local)
 	cachedAzpPoolIds           = make(map[string]int64)
+	cachedPendingJobsDump      = make(map[string]string) // maps from AutoScaledAgent.Name to a stringified dump of the pending jobs
 )
 
 func CreateHTTPClient() *http.Client {
@@ -92,6 +93,34 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 	}
 
 	return &pendingJobs, nil
+}
+
+// PrintPendingJobsIfChanged stringifies the pendingJobs and logs them if they changed since the last reconciliation
+func PrintPendingJobsIfChanged(ctx context.Context, crName string, pendingJobs *PendingJobsWrapper) {
+	logger := log.FromContext(ctx)
+
+	pendingJobsDebugMap := map[string][]map[string]string{}
+	for _, pendingJobsWithDemands := range pendingJobs.pendingJobs {
+		demands := pendingJobsWithDemands.demands.GetSortedStringificationOfMap()
+		pendingJobsDebugMap[demands] = []map[string]string{}
+		for _, pendingJob := range pendingJobsWithDemands.pendingJobs {
+			pendingJobsDebugMap[demands] = append(pendingJobsDebugMap[demands], map[string]string{
+				"RequestID": fmt.Sprintf("%d", pendingJob.RequestID),
+				"Demands":   GetSortedStringificationOfCapabilitiesMap(&pendingJob.Demands),
+				"Assigned":  fmt.Sprintf("%t", pendingJob.AssignTime != time.Time{}),
+			})
+		}
+	}
+
+	// Stringify the map as JSON string
+	pendingJobsDumpBytes, _ := json.Marshal(pendingJobsDebugMap)
+	pendingJobsDump := string(pendingJobsDumpBytes)
+
+	previousPendingJobsDump, exists := cachedPendingJobsDump[crName]
+	if !exists || previousPendingJobsDump != pendingJobsDump {
+		logger.Info("Pending jobs changed", "pendingJobs", pendingJobsDump)
+		cachedPendingJobsDump[crName] = pendingJobsDump
+	}
 }
 
 // CreateOrUpdateDummyAgents registers one dummy agent for each

@@ -119,6 +119,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		logger.Info("GetPendingJobs() failed")
 		return ctrl.Result{}, err
 	}
+	service.PrintPendingJobsIfChanged(ctx, autoScaledAgent.Name, pendingJobs)
 
 	runningPodsRaw, err := r.getPodsWithPhases(ctx, req, []string{"Running", "Pending"})
 	if err != nil {
