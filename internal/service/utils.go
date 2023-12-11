@@ -346,14 +346,18 @@ func GetFilteredRunningPods(pods []corev1.Pod) []corev1.Pod {
 	return out
 }
 
-func GetPodCount(runningPods *map[string][]corev1.Pod) int32 {
+func GetPodCountAndNames(runningPods *map[string][]corev1.Pod) (int32, []string) {
 	count := 0
+	var names []string
 
 	for _, pods := range *runningPods {
 		count += len(pods)
+		for _, pod := range pods {
+			names = append(names, pod.Name)
+		}
 	}
 
-	return int32(count)
+	return int32(count), names
 }
 
 func GetJobCount(pendingJobs *map[string][]PendingJob) int {

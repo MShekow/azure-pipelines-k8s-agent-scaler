@@ -131,17 +131,20 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	for _, podsWithCapabilities := range autoScaledAgent.Spec.PodsWithCapabilities {
 		matchingPods := runningPods.GetInexactMatch(&podsWithCapabilities.Capabilities)
-		matchingPodsCount := service.GetPodCount(matchingPods)
+		matchingPodsCount, matchingPodNames := service.GetPodCountAndNames(matchingPods)
 		matchingJobs := pendingJobs.GetInexactMatch(&podsWithCapabilities.Capabilities)
 		matchingJobsCount := service.GetJobCount(matchingJobs)
 
 		if int(matchingPodsCount) > service.Min(int(*podsWithCapabilities.MaxCount), service.Max(matchingJobsCount, int(*podsWithCapabilities.MinCount))) {
 			// Delete pods because we have too many. This situation should be rare (because agents normally terminate
-			// after having run a job) it can happen in specific situations, e.g. when the user reduced the maxCount
-			// in a pod spec in an AutoScaledAgentSpec CR
-			logger.Info(fmt.Sprintf("Need to terminate a pod: %d > min(%d, max(%d, %d))", matchingPodsCount, *podsWithCapabilities.MaxCount, len(*matchingJobs), *podsWithCapabilities.MinCount))
+			// after having run a job), but it can happen in specific situations, e.g.
+			// - the user reduced the maxCount in a pod spec in an AutoScaledAgentSpec CR
+			// - the user cancelled an AZP job
+			// - the AZP job has finished, but the Pod is still running, because the agent container is still working on clean-up tasks (e.g. de-registration)
+			logger.Info(fmt.Sprintf("Possibly need to terminate a pod: %d > min(%d, max(%d, %d))", matchingPodsCount, *podsWithCapabilities.MaxCount, len(*matchingJobs), *podsWithCapabilities.MinCount),
+				"capabilities", podsWithCapabilities.Capabilities, "matchingPodNames", matchingPodNames)
 
-			if terminateablePod, err := r.getTerminateablePod(ctx, matchingPods); err != nil {
+			if terminateablePod, selectionReason, err := r.getTerminateablePod(ctx, matchingPods); err != nil {
 				logger.Info("unable to get terminateable pod")
 				return ctrl.Result{}, err
 			} else {
@@ -151,7 +154,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 						logger.Info("unable to get terminate pod (lower code path)", "podName", terminateablePod.Name)
 						return ctrl.Result{}, err
 					}
-					logger.Info("successfully terminated pod", "podName", terminateablePod.Name)
+					logger.Info("successfully terminated pod", "podName", terminateablePod.Name, "selectionReason", selectionReason)
 				} else {
 					logger.Info("did not find any pod that could be terminated")
 				}
@@ -590,34 +593,32 @@ func (r *AutoScaledAgentReconciler) deletePromisedAnnotationFromPvcs(ctx context
 }
 
 // getTerminateablePod returns the first agent Pod that has either not even been
-// scheduled, or whose AZP container is still in a Waiting state, or (for AZP
-// containers in Running state) a "kubectl exec <podname> pgrep -l Agent.Worker |
-// wc -l" returns "0", indicating that the agent in the pod is not actively
-// working on any job (and thus safe to terminate). Errors are swallowed. Note
-// that for kubectl exec, we need to know the container name, but we assume that
-// the first container of the respective podspec is always the Azure DevOps Agent
-// container
-func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context, pods *map[string][]corev1.Pod) (*corev1.Pod, error) {
-
-	//_ := log.FromContext(ctx)
+// scheduled, or where "kubectl exec <podname> pgrep -l Agent.Worker | wc -l"
+// returns "0" for the AZP agent container, indicating that the agent in the pod
+// is not actively working on any job (and thus safe to terminate). Errors are
+// swallowed. Note that for kubectl exec, we need to know the container name, but
+// we assume that the first container of the respective podspec is always the
+// Azure DevOps Agent container
+func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context, pods *map[string][]corev1.Pod) (*corev1.Pod, string, error) {
+	logger := log.FromContext(ctx)
 	for _, podList := range *pods {
 		for _, pod := range podList {
 			if pod.Status.Phase == corev1.PodPending {
 				/*
-					We cannot just claim that a Pod whose Phase is Pending can be terminated,
-					because a Pod stays in Pending until ALL its containers have started. Thus, we
-					have to iterate over the Pod's ContainerStatuses (if they are available). We
-					just need to look at the first container status (for the AZP container), and if
-					its State.Waiting is != nil, we can also terminate the entire Pod
+					We cannot just claim that a Pod whose Phase is "Pending" can be terminated,
+					because a Pod stays in Pending until ALL its containers have started. We can,
+					however, differentiate between Pods that have not even been scheduled (for those
+					the ContainerStatuses are nil).
+
+					For the scheduled Pods (where the ContainerStatuses are not nil) we simply
+					assume that the AZP agent container is already running. Kubernetes does NOT
+					allow us to RELIABLY determine whether the agent container is up, because the
+					ContainerStatuses[*].State.Waiting != nil until _ALL_ containers have
+					transitioned to a non-waiting state (the K8s API server does not seem to publish
+					"partial" updates for individual containers)!
 				*/
 				if pod.Status.ContainerStatuses == nil {
-					// Pod has not even been scheduled to a node
-					return &pod, nil
-				}
-
-				// Check the AZP container, which is expected to be always the first container
-				if pod.Status.ContainerStatuses[0].State.Waiting != nil {
-					return &pod, nil
+					return &pod, "Pod has not yet been scheduled to a node", nil
 				}
 			}
 
@@ -627,12 +628,35 @@ func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context, pod
 			// but still return errors e.g. when K8s RBAC is lacking
 			if stdout, _, err := r.execCommandInPod(pod.Namespace, pod.Name, agentContainerName, cmd); err == nil {
 				if stdout == "0\n" {
-					return &pod, nil
+					timestampFormat := time.RFC3339
+					if _, exists := pod.Annotations[service.IdleAgentPodFirstDetectionTimestampAnnotationKey]; !exists {
+						pod.Annotations[service.IdleAgentPodFirstDetectionTimestampAnnotationKey] = time.Now().Format(timestampFormat)
+						err = r.Update(ctx, &pod)
+						if err != nil {
+							// Note that we ignore this error, because it is not critical
+							logger.Info("getTerminateablePod(): unable to set the first idle detection timestamp annotation", "podName", pod.Name, "err", err)
+						}
+					} else {
+						// Determine whether the date stored in the IdleAgentPodFirstDetectionTimestampAnnotationKey
+						// annotation is older than AgentMinIdlePeriodSeconds seconds
+						firstDetectionTimestampStr := pod.Annotations[service.IdleAgentPodFirstDetectionTimestampAnnotationKey]
+						firstDetectionTimestamp, err := time.Parse(timestampFormat, firstDetectionTimestampStr)
+						if err != nil {
+							// Note that we ignore this error, because it is not critical
+							logger.Info("getTerminateablePod(): unable to parse the first idle detection timestamp annotation", "podName", pod.Name, "err", err)
+						} else {
+							if time.Since(firstDetectionTimestamp).Seconds() >= service.AgentMinIdlePeriodSeconds {
+								return &pod, "AZP agent is idle (no Agent.Worker processes)", nil
+							} else {
+								logger.Info("getTerminateablePod(): AZP agent is idle, but has not been idle for long enough", "podName", pod.Name, "firstDetectionTimestamp", firstDetectionTimestamp)
+							}
+						}
+					}
 				}
 			}
 		}
 	}
-	return nil, nil
+	return nil, "", nil
 }
 
 // deleteTerminatedAgentPods deletes terminated Azure DevOps agent pods, except
