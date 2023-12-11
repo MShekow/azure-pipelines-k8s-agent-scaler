@@ -70,6 +70,7 @@ spec:
         - /manager
         args:
         - --leader-elect
+        - -zap-time-encoding=rfc3339nano  # improve the precision up to nanoseconds
         image: controller:latest
         imagePullPolicy: IfNotPresent
         name: manager
