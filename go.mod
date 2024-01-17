@@ -3,12 +3,17 @@ module github.com/MShekow/azure-pipelines-k8s-agent-scaler
 go 1.20
 
 require (
+	github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0
+	github.com/gorilla/mux v1.8.1
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.7
+	k8s.io/api v0.27.2
 	k8s.io/apimachinery v0.27.2
 	k8s.io/client-go v0.27.2
 	sigs.k8s.io/controller-runtime v0.15.0
 )
+
+replace github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent => ./fake_agent
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -62,7 +67,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.27.2 // indirect
 	k8s.io/apiextensions-apiserver v0.27.2 // indirect
 	k8s.io/component-base v0.27.2 // indirect
 	k8s.io/klog/v2 v2.90.1 // indirect
