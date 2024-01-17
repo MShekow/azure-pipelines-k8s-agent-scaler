@@ -4,7 +4,7 @@ go 1.20
 
 require github.com/MShekow/azure-pipelines-k8s-agent-scaler v0.0.0
 
-replace github.com/MShekow/azure-pipelines-k8s-agent-scaler => ../../azure-pipelines-k8s-agent-scaler
+replace github.com/MShekow/azure-pipelines-k8s-agent-scaler => ../
 
 require (
 	github.com/go-logr/logr v1.2.4 // indirect
