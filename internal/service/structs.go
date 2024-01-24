@@ -27,6 +27,16 @@ type AzurePipelinesAgent struct {
 	Status    string    `json:"status"`
 }
 
+type AzurePipelinesRegisterAgentRequest struct {
+	Name               string            `json:"name"`
+	Version            string            `json:"version"`
+	OsDescription      string            `json:"osDescription"`
+	Enabled            bool              `json:"enabled"`
+	Status             string            `json:"status"`
+	ProvisioningState  string            `json:"provisioningState"`
+	SystemCapabilities map[string]string `json:"systemCapabilities"`
+}
+
 type AzurePipelinesApiJobRequests struct {
 	Count int                           `json:"count"`
 	Value []AzurePipelinesApiJobRequest `json:"value"`

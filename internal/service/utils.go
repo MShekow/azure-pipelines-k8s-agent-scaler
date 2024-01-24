@@ -152,21 +152,20 @@ func CreateOrUpdateDummyAgents(ctx context.Context, poolId int64, azurePat strin
 	for _, podsWithCapabilities := range spec.PodsWithCapabilities {
 		dummyAgentName := getDummyAgentName(&podsWithCapabilities.Capabilities)
 
-		requestBodyTemplate := `{
-			"name": "%s",
-			"version": "99.999.9",
-			"osDescription": "Linux 5.15.49-linuxkit-pr #1 SMP PREEMPT Thu May 25 07:27:39 UTC 2023",
-			"enabled": true,
-			"status": "offline",
-			"provisioningState": "Provisioned",
-			"systemCapabilities": %s
-		}`
-		capabilitiesJsonStr, err := json.Marshal(podsWithCapabilities.Capabilities)
+		request := AzurePipelinesRegisterAgentRequest{
+			Name:               dummyAgentName,
+			Version:            "99.999.9",
+			OsDescription:      "Linux 5.15.49-linuxkit-pr #1 SMP PREEMPT Thu May 25 07:27:39 UTC 2023",
+			Enabled:            true,
+			Status:             "offline",
+			ProvisioningState:  "Provisioned",
+			SystemCapabilities: podsWithCapabilities.Capabilities,
+		}
+
+		requestBody, err := json.Marshal(request)
 		if err != nil {
 			return nil, err
 		}
-
-		requestBody := fmt.Sprintf(requestBodyTemplate, dummyAgentName, capabilitiesJsonStr)
 
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer([]byte(requestBody)))
 		if err != nil {

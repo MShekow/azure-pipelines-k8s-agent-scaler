@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/MShekow/azure-pipelines-k8s-agent-scaler/internal/service"
+	"github.com/google/go-cmp/cmp"
 	"github.com/gorilla/mux"
+	"io"
 	"log"
 	"sort"
 	"strconv"
@@ -232,7 +234,15 @@ func (f *FakeAzurePipelinesPlatformServer) assignJob(w http.ResponseWriter, r *h
 	// Get agent name and capabilities from the request headers
 	agentName := r.Header.Get("X-AZP-Agent-Name")
 	agentCapabilitiesStr := r.Header.Get("X-AZP-AGENT-CAPABILITIES")
-	agentCapabilities := strings.Split(agentCapabilitiesStr, ";")
+
+	var agentCapabilities map[string]string
+	err = json.Unmarshal([]byte(agentCapabilitiesStr), &agentCapabilities)
+	if err != nil {
+		// Return a 400 Bad Request error with a JSON body
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf(`{"error": "failed to unmarshal agent capabilities: %s"}`, err.Error())))
+		return
+	}
 
 	// Verify that the agent exists
 	agentExists := false
@@ -299,8 +309,7 @@ func (f *FakeAzurePipelinesPlatformServer) finishJob(w http.ResponseWriter, r *h
 	w.WriteHeader(http.StatusOK)
 }
 
-// addAgent handles the "add-agent" request from our fake Azure Pipelines agent. It expects the poolID in the URL, and
-// the agent name and capabilities in the request headers (X-AZP-Agent-Name and X-AZP-AGENT-CAPABILITIES).
+// addAgent handles the "add-agent" request from our fake Azure Pipelines agent or the "real" controller client.
 // In case of success, it returns a 200 OK response and returns the auto-generated agent ID in the response body (JSON).
 func (f *FakeAzurePipelinesPlatformServer) addAgent(w http.ResponseWriter, r *http.Request) {
 	poolId, err := f.verifyPoolId(w, r)
@@ -308,24 +317,39 @@ func (f *FakeAzurePipelinesPlatformServer) addAgent(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Get agent name and capabilities from the request headers
-	agentName := r.Header.Get("X-AZP-Agent-Name")
-	agentCapabilitiesStr := r.Header.Get("X-AZP-AGENT-CAPABILITIES")
-	agentCapabilities := strings.Split(agentCapabilitiesStr, ";")
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf(`{"error": "failed to read request body: %s"}`, err.Error())))
+		return
+	}
+
+	var registerAgentRequest service.AzurePipelinesRegisterAgentRequest
+	err = json.Unmarshal(body, &registerAgentRequest)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf(`{"error": "failed to unmarshal request body: %s"}`, err.Error())))
+		return
+	}
 
 	// Verify that the agent does not exist yet
 	for _, agent := range f.Agents {
-		if agent.Name == agentName {
+		if agent.Name == registerAgentRequest.Name {
 			// Return a 409 Conflict error with a JSON body
 			w.WriteHeader(http.StatusConflict)
 			w.Write([]byte(fmt.Sprintf(`{"error": "agent with name %s already exists", "id": %d}`,
-				agentName, agent.ID)))
+				registerAgentRequest.Name, agent.ID)))
+
+			// update capabilities if they have changed
+			if !cmp.Equal(agent.Capabilities, registerAgentRequest.SystemCapabilities) {
+				agent.Capabilities = registerAgentRequest.SystemCapabilities
+			}
 
 			// Add the request to the list of requests
 			f.Requests = append(f.Requests, Request{
 				Type:              ReplaceAgent,
-				AgentName:         agentName,
-				AgentCapabilities: agentCapabilities,
+				AgentName:         registerAgentRequest.Name,
+				AgentCapabilities: registerAgentRequest.SystemCapabilities,
 				PoolID:            poolId,
 			})
 
@@ -335,16 +359,17 @@ func (f *FakeAzurePipelinesPlatformServer) addAgent(w http.ResponseWriter, r *ht
 
 	// Add the agent to the list of agents
 	agent := Agent{
-		Name: agentName,
-		ID:   len(f.Agents) + 1,
+		Name:         registerAgentRequest.Name,
+		ID:           len(f.Agents) + 1,
+		Capabilities: registerAgentRequest.SystemCapabilities,
 	}
 	f.Agents = append(f.Agents, agent)
 
 	// Add the request to the list of requests
 	f.Requests = append(f.Requests, Request{
 		Type:              CreateAgent,
-		AgentName:         agentName,
-		AgentCapabilities: agentCapabilities,
+		AgentName:         registerAgentRequest.Name,
+		AgentCapabilities: registerAgentRequest.SystemCapabilities,
 		PoolID:            poolId,
 	})
 

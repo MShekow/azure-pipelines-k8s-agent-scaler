@@ -34,12 +34,13 @@ type Job struct {
 type Request struct {
 	Type              RequestType
 	AgentName         string
-	AgentCapabilities []string
+	AgentCapabilities map[string]string
 	PoolID            int
 	JobID             int
 }
 
 type Agent struct {
-	Name string
-	ID   int
+	Name         string
+	ID           int
+	Capabilities map[string]string
 }

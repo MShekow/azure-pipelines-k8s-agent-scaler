@@ -1,6 +1,7 @@
 package fake_agent_utils
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_platform_server"
@@ -66,12 +67,27 @@ func RegisterAsAgent(organizationUrl string, poolId int64, agentName string, htt
 	url := organizationUrl +
 		strings.Replace(fake_platform_server.AgentsContainerUrl, "{pool-id:[0-9]+}", fmt.Sprintf("%d", poolId), 1)
 
-	req, err := http.NewRequest("POST", url, nil)
+	request := service.AzurePipelinesRegisterAgentRequest{
+		Name:               agentName,
+		Version:            "99.999.9",
+		OsDescription:      "Linux 5.15.49-linuxkit-pr #1 SMP PREEMPT Thu May 25 07:27:39 UTC 2023",
+		Enabled:            true,
+		Status:             "online",
+		ProvisioningState:  "Provisioned",
+		SystemCapabilities: getCapabilitiesMapFromEnv(),
+	}
+
+	requestBody, err := json.Marshal(request)
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("X-AZP-Agent-Name", agentName)
-	req.Header.Set("X-AZP-AGENT-CAPABILITIES", strings.Join(os.Environ(), ";"))
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return 0, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
 
 	response, err := httpClient.Do(req)
 	if err != nil {
@@ -216,7 +232,11 @@ func AssignJob(organizationUrl string, agentName string, jobId int, httpClient *
 	}
 
 	req.Header.Set("X-AZP-Agent-Name", agentName)
-	req.Header.Set("X-AZP-AGENT-CAPABILITIES", strings.Join(os.Environ(), ";"))
+	capabilitiesStr, err := json.Marshal(getCapabilitiesMapFromEnv())
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-AZP-AGENT-CAPABILITIES", string(capabilitiesStr))
 
 	response, err := httpClient.Do(req)
 	if err != nil {
@@ -271,7 +291,7 @@ func DeleteAgent(organizationUrl string, agentId int, poolId int64, httpClient *
 	return nil
 }
 
-func DoesFakeAgentCapabilitiesSatisfyDemands(demands []string) bool {
+func getCapabilitiesMapFromEnv() map[string]string {
 	capabilitiesMapFromEnv := map[string]string{}
 	for _, env := range os.Environ() {
 		envParts := strings.Split(env, "=")
@@ -279,6 +299,11 @@ func DoesFakeAgentCapabilitiesSatisfyDemands(demands []string) bool {
 			capabilitiesMapFromEnv[envParts[0]] = envParts[1]
 		}
 	}
+	return capabilitiesMapFromEnv
+}
+
+func DoesFakeAgentCapabilitiesSatisfyDemands(demands []string) bool {
+	capabilitiesMapFromEnv := getCapabilitiesMapFromEnv()
 
 	for _, demand := range demands {
 		demandParts := strings.Split(demand, " -equals ")
