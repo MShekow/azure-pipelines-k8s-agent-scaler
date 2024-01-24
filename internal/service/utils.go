@@ -566,6 +566,10 @@ func HasPodPermanentlyDisappeared(podName string) bool {
 func ParseExtraAgentContainerDefinition(extraAgentContainers string) ([]corev1.Container, error) {
 	var extraAgentContainerDefinitions []corev1.Container
 
+	if extraAgentContainers == "" {
+		return extraAgentContainerDefinitions, nil
+	}
+
 	definitionStrings := strings.Split(extraAgentContainers, "||")
 	for _, definitionString := range definitionStrings {
 		attributes := strings.Split(definitionString, ",")

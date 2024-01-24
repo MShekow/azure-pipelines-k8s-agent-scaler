@@ -14,23 +14,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+// Contains the end-to-end tests for the controller.
+
+package controller_test
 
 import (
-	"path/filepath"
+	"context"
+	azurepipelinesk8sscaleriov1 "github.com/MShekow/azure-pipelines-k8s-agent-scaler/api/v1"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/e2e-framework/pkg/env"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	"sigs.k8s.io/e2e-framework/pkg/envfuncs"
+	"sigs.k8s.io/e2e-framework/support/kind"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	azurepipelinesk8sscaleriov1 "github.com/MShekow/azure-pipelines-k8s-agent-scaler/api/v1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -39,7 +43,10 @@ import (
 
 var cfg *rest.Config
 var k8sClient client.Client
-var testEnv *envtest.Environment
+var testenv env.Environment
+var kindClusterName string
+var envCfg *envconf.Config
+var ctx context.Context
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -51,16 +58,17 @@ var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
-	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		ErrorIfCRDPathMissing: true,
-	}
 
+	envCfg = envconf.New()
+	ctx = context.Background()
+	testenv, _ = env.NewWithContext(ctx, envCfg)
+	kindClusterName = envconf.RandomName("kind-with-config", 16)
+	createFunc := envfuncs.CreateClusterWithConfig(kind.NewProvider(), kindClusterName, "kind-config.yaml", kind.WithImage("kindest/node:v1.22.2"))
 	var err error
-	// cfg is defined in this file globally.
-	cfg, err = testEnv.Start()
+	ctx, err = createFunc(ctx, envCfg)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg).NotTo(BeNil())
+
+	cfg = envCfg.Client().RESTConfig()
 
 	err = azurepipelinesk8sscaleriov1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
@@ -75,6 +83,7 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
-	err := testEnv.Stop()
+	destroyFunc := envfuncs.DestroyCluster(kindClusterName)
+	_, err := destroyFunc(ctx, envCfg)
 	Expect(err).NotTo(HaveOccurred())
 })

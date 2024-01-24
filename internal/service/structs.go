@@ -216,12 +216,12 @@ func (pjw *PendingJobsWrapper) AddJobRequest(jobRequestFromApi *AzurePipelinesAp
 }
 
 type RunningPodsWithCapabilities struct {
-	capabilities InexactMatchStringMap
-	runningPods  []corev1.Pod
+	Capabilities InexactMatchStringMap
+	RunningPods  []corev1.Pod
 }
 
 type RunningPodsWrapper struct {
-	runningPods []RunningPodsWithCapabilities
+	RunningPods []RunningPodsWithCapabilities
 }
 
 func NewRunningPodsWrapper(runningPods []corev1.Pod) *RunningPodsWrapper {
@@ -233,9 +233,9 @@ func NewRunningPodsWrapper(runningPods []corev1.Pod) *RunningPodsWrapper {
 		podCapabilitiesMap := (*InexactMatchStringMap)(GetCapabilitiesMapFromString(podCapabilitiesStr))
 
 		foundExistingEntry := false
-		for i, rp := range rpw.runningPods {
-			if reflect.DeepEqual(&rp.capabilities, podCapabilitiesMap) {
-				(&rpw.runningPods[i]).runningPods = append((&rpw.runningPods[i]).runningPods, pod)
+		for i, rp := range rpw.RunningPods {
+			if reflect.DeepEqual(&rp.Capabilities, podCapabilitiesMap) {
+				(&rpw.RunningPods[i]).RunningPods = append((&rpw.RunningPods[i]).RunningPods, pod)
 				foundExistingEntry = true
 				break
 			}
@@ -243,10 +243,10 @@ func NewRunningPodsWrapper(runningPods []corev1.Pod) *RunningPodsWrapper {
 
 		if !foundExistingEntry {
 			rpWithCapabilities := RunningPodsWithCapabilities{
-				capabilities: *podCapabilitiesMap,
-				runningPods:  []corev1.Pod{pod},
+				Capabilities: *podCapabilitiesMap,
+				RunningPods:  []corev1.Pod{pod},
 			}
-			rpw.runningPods = append(rpw.runningPods, rpWithCapabilities)
+			rpw.RunningPods = append(rpw.RunningPods, rpWithCapabilities)
 		}
 	}
 
@@ -256,9 +256,9 @@ func NewRunningPodsWrapper(runningPods []corev1.Pod) *RunningPodsWrapper {
 func (rpw *RunningPodsWrapper) GetInexactMatch(capabilities *map[string]string) *map[string][]corev1.Pod {
 	result := map[string][]corev1.Pod{}
 
-	for _, runningPod := range rpw.runningPods {
-		if runningPod.capabilities.IsInexactMatch(capabilities) {
-			result[runningPod.capabilities.GetSortedStringificationOfMap()] = runningPod.runningPods
+	for _, runningPod := range rpw.RunningPods {
+		if runningPod.Capabilities.IsInexactMatch(capabilities) {
+			result[runningPod.Capabilities.GetSortedStringificationOfMap()] = runningPod.RunningPods
 		}
 	}
 
