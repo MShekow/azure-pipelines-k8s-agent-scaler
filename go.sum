@@ -1,8 +1,8 @@
 cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
 cloud.google.com/go v0.34.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
-github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240117140316-e4a24a3e9447 h1:i27Z28G9HCl3ZGicxeLyoCF5c8cDA2V7st5k5Ybols0=
-github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240117140316-e4a24a3e9447/go.mod h1:hRdzeLpNsqQBTuvwx9ho4wJ1O/zjZ9MfsDY+CiHu/RA=
+github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240124095934-f415087aa87d h1:5fzq2Y8NnvLt/yL3SEYBKURZ/D1Dut6/7QnvN3XN9Qs=
+github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240124095934-f415087aa87d/go.mod h1:iTBkqyHATOe54DwyDrIpj2M0ydJcsEodsgPJW8ngmks=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
