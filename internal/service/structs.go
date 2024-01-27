@@ -168,13 +168,13 @@ type PendingJobsWithDemands struct {
 }
 
 type PendingJobsWrapper struct {
-	pendingJobs []PendingJobsWithDemands
+	PendingJobs []PendingJobsWithDemands
 }
 
 func (pjw *PendingJobsWrapper) GetInexactMatch(capabilities *map[string]string) *map[string][]PendingJob {
 	result := map[string][]PendingJob{}
 
-	for _, pendingJob := range pjw.pendingJobs {
+	for _, pendingJob := range pjw.PendingJobs {
 		if pendingJob.demands.IsInexactMatch(capabilities) {
 			result[pendingJob.demands.GetSortedStringificationOfMap()] = pendingJob.pendingJobs
 		}
@@ -205,12 +205,12 @@ func (pjw *PendingJobsWrapper) AddJobRequest(jobRequestFromApi *AzurePipelinesAp
 		Demands:    demandsAsMap,
 	}
 	// Check whether there is already an entry for the demandsAsMap, if not, create one, otherwise
-	// only append to the existing "pendingJobs" slice
+	// only append to the existing "PendingJobs" slice
 
 	foundExistingEntry := false
-	for i, pj := range pjw.pendingJobs {
+	for i, pj := range pjw.PendingJobs {
 		if reflect.DeepEqual(pj.demands, demandsAsMap) {
-			(&pjw.pendingJobs[i]).pendingJobs = append((&pjw.pendingJobs[i]).pendingJobs, pendingJob)
+			(&pjw.PendingJobs[i]).pendingJobs = append((&pjw.PendingJobs[i]).pendingJobs, pendingJob)
 			foundExistingEntry = true
 			break
 		}
@@ -221,7 +221,7 @@ func (pjw *PendingJobsWrapper) AddJobRequest(jobRequestFromApi *AzurePipelinesAp
 			demands:     demandsAsMap,
 			pendingJobs: []PendingJob{pendingJob},
 		}
-		pjw.pendingJobs = append(pjw.pendingJobs, pjWithDemands)
+		pjw.PendingJobs = append(pjw.PendingJobs, pjWithDemands)
 	}
 }
 

@@ -1,5 +1,7 @@
 package fake_platform_server
 
+import "time"
+
 type JobState string
 
 const (
@@ -43,4 +45,6 @@ type Agent struct {
 	Name         string
 	ID           int
 	Capabilities map[string]string
+	Status       string
+	CreatedOn    time.Time
 }

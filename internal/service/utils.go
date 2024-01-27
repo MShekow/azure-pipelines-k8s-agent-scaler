@@ -95,12 +95,12 @@ func GetPendingJobs(ctx context.Context, poolId int64, azurePat string, httpClie
 	return &pendingJobs, nil
 }
 
-// PrintPendingJobsIfChanged stringifies the pendingJobs and logs them if they changed since the last reconciliation
+// PrintPendingJobsIfChanged stringifies the PendingJobs and logs them if they changed since the last reconciliation
 func PrintPendingJobsIfChanged(ctx context.Context, crName string, pendingJobs *PendingJobsWrapper) {
 	logger := log.FromContext(ctx)
 
 	pendingJobsDebugMap := map[string][]map[string]string{}
-	for _, pendingJobsWithDemands := range pendingJobs.pendingJobs {
+	for _, pendingJobsWithDemands := range pendingJobs.PendingJobs {
 		demands := pendingJobsWithDemands.demands.GetSortedStringificationOfMap()
 		pendingJobsDebugMap[demands] = []map[string]string{}
 		for _, pendingJob := range pendingJobsWithDemands.pendingJobs {

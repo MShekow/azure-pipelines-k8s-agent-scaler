@@ -362,6 +362,8 @@ func (f *FakeAzurePipelinesPlatformServer) addAgent(w http.ResponseWriter, r *ht
 		Name:         registerAgentRequest.Name,
 		ID:           len(f.Agents) + 1,
 		Capabilities: registerAgentRequest.SystemCapabilities,
+		Status:       "offline",
+		CreatedOn:    time.Now(),
 	}
 	f.Agents = append(f.Agents, agent)
 
@@ -387,10 +389,10 @@ func (f *FakeAzurePipelinesPlatformServer) listAgents(w http.ResponseWriter, r *
 	var agents []service.AzurePipelinesAgent
 	for _, agent := range f.Agents {
 		agents = append(agents, service.AzurePipelinesAgent{
-			CreatedOn: time.Time{},
+			CreatedOn: agent.CreatedOn,
 			Name:      agent.Name,
 			Id:        agent.ID,
-			Status:    "offline",
+			Status:    agent.Status,
 		})
 	}
 
@@ -431,17 +433,27 @@ func (f *FakeAzurePipelinesPlatformServer) deleteAgent(w http.ResponseWriter, r 
 		return
 	}
 
+	agentName := ""
 	for i, agent := range f.Agents {
 		if agent.ID == agentId {
+			agentName = agent.Name
 			f.Agents = append(f.Agents[:i], f.Agents[i+1:]...)
 			break
 		}
 	}
 
+	if agentName == "" {
+		// Return a 404 Not Found error with a JSON body
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf(`{"error": "agent with id %d not found"}`, agentId)))
+		return
+	}
+
 	// Add the request to the list of requests
 	f.Requests = append(f.Requests, Request{
-		Type:   DeleteAgent,
-		PoolID: poolId,
+		Type:      DeleteAgent,
+		AgentName: agentName,
+		PoolID:    poolId,
 	})
 
 	w.WriteHeader(http.StatusOK)
