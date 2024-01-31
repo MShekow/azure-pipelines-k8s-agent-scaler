@@ -50,7 +50,7 @@ type AutoScaledAgentSpec struct {
 	// fraction and a unit suffix, eg "300ms", "1.5h" or "2h45m".
 	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 	// +kubebuilder:default:="30m"
-	// +kubebuilder:validation:Pattern="^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
 	// +kubebuilder:validation:Type:=string
 	// +optional
 	DummyAgentGarbageCollectionInterval *metav1.Duration `json:"dummyAgentGarbageCollectionInterval,omitempty"`
@@ -61,7 +61,7 @@ type AutoScaledAgentSpec struct {
 	// fraction and a unit suffix, eg "300ms", "1.5h" or "2h45m".
 	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 	// +kubebuilder:default:="2h"
-	// +kubebuilder:validation:Pattern="^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
 	// +kubebuilder:validation:Type:=string
 	// +optional
 	DummyAgentDeletionMinAge *metav1.Duration `json:"dummyAgentDeletionMinAge,omitempty"`
@@ -73,7 +73,7 @@ type AutoScaledAgentSpec struct {
 	// fraction and a unit suffix, eg "300ms", "1.5h" or "2h45m".
 	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 	// +kubebuilder:default:="5h"
-	// +kubebuilder:validation:Pattern="^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
 	// +kubebuilder:validation:Type:=string
 	// +optional
 	NormalOfflineAgentDeletionMinAge *metav1.Duration `json:"normalOfflineAgentDeletionMinAge,omitempty"`
