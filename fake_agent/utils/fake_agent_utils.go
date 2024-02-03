@@ -253,11 +253,23 @@ func AssignJob(organizationUrl string, agentName string, jobId int, httpClient *
 	return nil
 }
 
-func FinishJob(organizationUrl string, jobId int, httpClient *http.Client) error {
+func FinishJob(organizationUrl string, agentName string, jobId int, httpClient *http.Client) error {
 	url := organizationUrl +
 		strings.Replace(fake_platform_server.FinishJobUrl, "{job-id:[0-9]+}", fmt.Sprintf("%d", jobId), 1)
 
-	response, err := httpClient.Post(url, "application/json", nil)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("X-AZP-Agent-Name", agentName)
+	capabilitiesStr, err := json.Marshal(getCapabilitiesMapFromEnv())
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-AZP-AGENT-CAPABILITIES", string(capabilitiesStr))
+
+	response, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}

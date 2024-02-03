@@ -165,7 +165,7 @@ func main() {
 					stoppedTimestamp = time.Now()
 
 					// Call the finish-job API
-					err = fake_agent_utils.FinishJob(organizationUrl, assignedJob.ID, httpClient)
+					err = fake_agent_utils.FinishJob(organizationUrl, agentName, assignedJob.ID, httpClient)
 					if err != nil {
 						fmt.Printf("Unable to finish job: %v\n", err)
 						os.Exit(1)
