@@ -127,13 +127,14 @@ var _ = Describe("Empty server", func() {
 			err := server.AddJob(jobId, poolId, duration, demands)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = utils.AssignJob(fakeOrganizationUrl, "test-agent", jobId, httpClient)
+			agentName := "test-agent"
+			err = utils.AssignJob(fakeOrganizationUrl, agentName, jobId, httpClient)
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(server.Jobs).To(HaveLen(1))
 			Expect(server.Jobs[0].State).To(Equal(fake_platform_server.InProgress))
 
-			err = utils.FinishJob(fakeOrganizationUrl, jobId, httpClient)
+			err = utils.FinishJob(fakeOrganizationUrl, agentName, jobId, httpClient)
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(server.Jobs).To(HaveLen(1))
