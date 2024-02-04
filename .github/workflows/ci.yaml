@@ -45,7 +45,9 @@ jobs:
 #          install-go: false
 
       - name: Run tests
-        run: ginkgo ./...
+        run: |
+          go install github.com/onsi/ginkgo/v2/ginkgo
+          ginkgo ./...
 
 # TODO
 # - Add https://github.com/EnricoMi/publish-unit-test-result-action
