@@ -14,7 +14,7 @@ RUN cd fake_agent_worker_process && go mod download
 RUN cd fake_agent_worker_process && ./compile.sh && cp linux-${TARGETARCH}/Agent.Worker /workspace/Agent.Worker
 
 
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static:debug-nonroot
 ARG TARGETARCH
 WORKDIR /
 COPY --from=builder /workspace/fake_agent/fake_agent .

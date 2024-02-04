@@ -23,7 +23,7 @@ func (e *ConflictError) Error() string {
 	return "conflict error"
 }
 
-const HttpRequestTimeout = 10 * time.Second
+const HttpRequestTimeout = 1 * time.Second
 
 func GetPoolIdFromName(organizationUrl, poolName string, httpClient *http.Client) (int64, error) {
 	url := fmt.Sprintf("%s/_apis/distributedtask/pools?poolName=%s", organizationUrl, poolName)

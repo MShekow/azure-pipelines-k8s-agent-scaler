@@ -75,11 +75,13 @@ func main() {
 		- Sleep for 1 second
 	*/
 	for {
+		fmt.Println("Checking for pending jobs")
 		jobs, err := fake_agent_utils.GetPendingJobs(organizationUrl, poolId, httpClient)
 		if err != nil {
 			fmt.Printf("Unable to retrieve pending jobs: %v\n", err)
 			os.Exit(1)
 		}
+		fmt.Printf("Retrieved %d pending/running jobs\n", len(jobs))
 
 		if !hasAssignedJob {
 			// Try to assign the agent to a pending job, given that capabilities and demands match
@@ -97,6 +99,8 @@ func main() {
 					assignedJob = job
 					hasAssignedJob = true
 					break
+				} else {
+					fmt.Printf("Job with ID %d does not match capabilities or demands. State=%s, demands=%v\n", job.ID, job.State, job.Demands)
 				}
 			}
 
