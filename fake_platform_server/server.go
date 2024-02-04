@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 import "net/http"
@@ -22,6 +23,8 @@ const JobsListUrl = "/_apis/distributedtask/pools/{pool-id:[0-9]+}/jobrequests"
 const SpecificAgentUrl = "/_apis/distributedtask/pools/{pool-id:[0-9]+}/agents/{agent-id:[0-9]+}"
 const AssignJobUrl = "/fake-api/assign-job/{job-id:[0-9]+}"
 const FinishJobUrl = "/fake-api/finish-job/{job-id:[0-9]+}"
+
+var dataMutationMutex = &sync.Mutex{}
 
 type FakeAzurePipelinesPlatformServer struct {
 	Jobs      []Job
@@ -215,6 +218,10 @@ func (f *FakeAzurePipelinesPlatformServer) assignJob(w http.ResponseWriter, r *h
 			vars["job-id"])))
 		return
 	}
+
+	dataMutationMutex.Lock()
+	defer dataMutationMutex.Unlock()
+
 	job := f.getJob(jobId)
 
 	if job == nil {
@@ -286,6 +293,10 @@ func (f *FakeAzurePipelinesPlatformServer) finishJob(w http.ResponseWriter, r *h
 			vars["job-id"])))
 		return
 	}
+
+	dataMutationMutex.Lock()
+	defer dataMutationMutex.Unlock()
+
 	job := f.getJob(jobId)
 
 	if job == nil {
@@ -298,11 +309,14 @@ func (f *FakeAzurePipelinesPlatformServer) finishJob(w http.ResponseWriter, r *h
 	job.State = Finished
 	f.saveJob(*job)
 
+	agentName := r.Header.Get("X-AZP-Agent-Name")
+
 	// Add the request to the list of requests
 	f.Requests = append(f.Requests, Request{
-		Type:   FinishJob,
-		PoolID: job.PoolID,
-		JobID:  jobId,
+		Type:      FinishJob,
+		AgentName: agentName,
+		PoolID:    job.PoolID,
+		JobID:     jobId,
 	})
 
 	// Return a 200 OK response
@@ -331,6 +345,9 @@ func (f *FakeAzurePipelinesPlatformServer) addAgent(w http.ResponseWriter, r *ht
 		w.Write([]byte(fmt.Sprintf(`{"error": "failed to unmarshal request body: %s"}`, err.Error())))
 		return
 	}
+
+	dataMutationMutex.Lock()
+	defer dataMutationMutex.Unlock()
 
 	// Verify that the agent does not exist yet
 	for _, agent := range f.Agents {
@@ -386,6 +403,9 @@ func (f *FakeAzurePipelinesPlatformServer) listAgents(w http.ResponseWriter, r *
 		return
 	}
 
+	dataMutationMutex.Lock()
+	defer dataMutationMutex.Unlock()
+
 	var agents []service.AzurePipelinesAgent
 	for _, agent := range f.Agents {
 		agents = append(agents, service.AzurePipelinesAgent{
@@ -433,6 +453,9 @@ func (f *FakeAzurePipelinesPlatformServer) deleteAgent(w http.ResponseWriter, r 
 		return
 	}
 
+	dataMutationMutex.Lock()
+	defer dataMutationMutex.Unlock()
+
 	agentName := ""
 	for i, agent := range f.Agents {
 		if agent.ID == agentId {
@@ -471,6 +494,9 @@ func (f *FakeAzurePipelinesPlatformServer) listJobs(w http.ResponseWriter, r *ht
 	if err != nil {
 		return
 	}
+
+	dataMutationMutex.Lock()
+	defer dataMutationMutex.Unlock()
 
 	var jobRequests []service.AzurePipelinesApiJobRequest
 	for _, job := range f.Jobs {
