@@ -701,6 +701,34 @@ func GetPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Cl
 	return poolId, nil
 }
 
+// GetContainerStatusIndex returns the index of the container status in the Pod
+// whose name matches the name of the container in the AutoScaledAgentSpec. This
+// is necessary because the container statuses in the Pod are not guaranteed to
+// be in the same order as the containers in the Pod template spec (but the
+// statuses may e.g. be sorted alphabetically).
+func GetContainerStatusIndex(pod *corev1.Pod, spec *apscalerv1.AutoScaledAgentSpec, containerIndex int) (int, error) {
+	// Determine which PodsWithCapabilities template is the correct one
+	capabilitiesStrOfPod := pod.Annotations[CapabilitiesAnnotationName]
+	agentContainerName := ""
+	for _, podsWithCapabilities := range spec.PodsWithCapabilities {
+		capabilitiesStrOfTemplate := GetSortedStringificationOfCapabilitiesMap(&podsWithCapabilities.Capabilities)
+		if capabilitiesStrOfTemplate == capabilitiesStrOfPod {
+			agentContainerName = podsWithCapabilities.PodTemplateSpec.Spec.Containers[containerIndex].Name
+			break
+		}
+	}
+	if agentContainerName == "" {
+		return -1, fmt.Errorf("no PodsWithCapabilities template found for pod %s (should never happen!!)", pod.Name)
+	}
+
+	for i, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.Name == agentContainerName {
+			return i, nil
+		}
+	}
+	return -1, fmt.Errorf("no agent container found in pod that has the expected name %s", agentContainerName)
+}
+
 func IsVerboseDebugLoggingEnabled() bool {
 	debugFilePath := os.Getenv(DebugLogEnvVarName)
 	if _, err := os.Stat(debugFilePath); err == nil {

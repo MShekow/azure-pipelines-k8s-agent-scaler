@@ -3,6 +3,7 @@
 installCRDs: true  # used in Chart.yaml
 
 replicaCount: 1
+useLeaderElection: true
 
 image:
   registry: ghcr.io

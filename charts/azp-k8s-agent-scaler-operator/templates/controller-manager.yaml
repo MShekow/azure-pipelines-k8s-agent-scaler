@@ -29,7 +29,9 @@ spec:
         - command:
             - /manager
           args:
+            {{- if .Values.useLeaderElection }}
             - --leader-elect
+            {{- end }}
             - -zap-time-encoding=rfc3339nano  # improve the precision up to nanoseconds
           image: {{ include "azp-k8s-agent-scaler-operator.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
