@@ -1,5 +1,7 @@
 package service
 
+import "time"
+
 const CapabilitiesAnnotationName = "AzurePipelinesCapabilities"
 const ExtraAgentContainersAnnotationKey = "ExtraAgentContainers"
 const ReusableCacheVolumeNameAnnotationKey = "ReusableCacheVolumeName"
@@ -11,4 +13,4 @@ const AzureWorkingDirMountName = "workspace"
 const DummyAgentNamePrefix = "dummy-agent"
 const NonExistentContainerImageSuffix = "does-not-exist-for-sure"
 const DebugLogEnvVarName = "DEBUG_FILE_PATH"
-const AgentMinIdlePeriodSeconds = 5 * 60
+const AgentMinIdlePeriodDefault = time.Duration(5 * time.Minute)

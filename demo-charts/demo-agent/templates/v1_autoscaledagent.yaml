@@ -9,6 +9,7 @@ spec:
   organizationUrl: {{ .Values.organizationUrl }}
   personalAccessTokenSecretName: azure-pipelines-pat
   maxTerminatedPodsToKeep: {{ .Values.maxTerminatedPodsToKeep }}
+  agentMinIdlePeriod: {{ .Values.agentMinIdlePeriod }}
   dummyAgentGarbageCollectionInterval: {{ .Values.dummyAgentGarbageCollectionInterval }}
   dummyAgentDeletionMinAge: {{ .Values.dummyAgentDeletionMinAge }}
   normalOfflineAgentDeletionMinAge: {{ .Values.normalOfflineAgentDeletionMinAge }}

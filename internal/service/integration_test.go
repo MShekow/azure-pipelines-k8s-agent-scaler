@@ -181,9 +181,9 @@ var _ = Describe("Integration tests", func() {
 				"bar": "1",
 			}
 			duration := int64(30 * time.Second)
-			err := server.AddJob(jobId1, serverPoolId, duration, demands1)
+			err := server.AddJob(jobId1, serverPoolId, duration, 0, demands1)
 			Expect(err).ToNot(HaveOccurred())
-			err = server.AddJob(jobId2, serverPoolId, duration, demands2)
+			err = server.AddJob(jobId2, serverPoolId, duration, 0, demands2)
 			Expect(err).ToNot(HaveOccurred())
 
 			agentSpec := v1.AutoScaledAgentSpec{
@@ -220,11 +220,11 @@ var _ = Describe("Integration tests", func() {
 				"bar": "1",
 			}
 			duration := int64(30 * time.Second)
-			err := server.AddJob(jobId1, serverPoolId, duration, demands1and2)
+			err := server.AddJob(jobId1, serverPoolId, duration, 0, demands1and2)
 			Expect(err).ToNot(HaveOccurred())
-			err = server.AddJob(jobId2, serverPoolId, duration, demands1and2)
+			err = server.AddJob(jobId2, serverPoolId, duration, 0, demands1and2)
 			Expect(err).ToNot(HaveOccurred())
-			err = server.AddJob(jobId3, serverPoolId, duration, demands3)
+			err = server.AddJob(jobId3, serverPoolId, duration, 0, demands3)
 			Expect(err).ToNot(HaveOccurred())
 
 			agentSpec := v1.AutoScaledAgentSpec{

@@ -45,6 +45,18 @@ type AutoScaledAgentSpec struct {
 	// +kubebuilder:default:=5
 	MaxTerminatedPodsToKeep *int32 `json:"maxTerminatedPodsToKeep,omitempty"`
 
+	// If the controller detects a Pod with an idle AZP agent container, how long (after the first detection) should
+	// the controller wait before it terminates the Pod? The controller only terminates it if the AZP agent
+	// container was idle during the entire period.
+	// Expects an unsigned duration string of decimal numbers each with optional
+	// fraction and a unit suffix, eg "300ms", "1.5h" or "2h45m".
+	// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+	// +kubebuilder:default:="5m"
+	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+	// +kubebuilder:validation:Type:=string
+	// +optional
+	AgentMinIdlePeriod *metav1.Duration `json:"agentMinIdlePeriod,omitempty"`
+
 	// How often the garbage collection (=deleting offline Azure DevOps agents) is run.
 	// Expects an unsigned duration string of decimal numbers each with optional
 	// fraction and a unit suffix, eg "300ms", "1.5h" or "2h45m".

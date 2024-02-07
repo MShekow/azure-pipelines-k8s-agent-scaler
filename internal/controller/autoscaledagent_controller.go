@@ -145,7 +145,12 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			logger.Info(fmt.Sprintf("Possibly need to terminate a pod: %d > min(%d, max(%d, %d))", matchingPodsCount, *podsWithCapabilities.MaxCount, len(*matchingJobs), *podsWithCapabilities.MinCount),
 				"capabilities", podsWithCapabilities.Capabilities, "matchingPodNames", matchingPodNames)
 
-			if terminateablePod, selectionReason, err := r.getTerminateablePod(ctx, matchingPods); err != nil {
+			agentMinIdleDuration := service.AgentMinIdlePeriodDefault
+			if autoScaledAgent.Spec.AgentMinIdlePeriod != nil {
+				agentMinIdleDuration = autoScaledAgent.Spec.AgentMinIdlePeriod.Duration
+			}
+
+			if terminateablePod, selectionReason, err := r.getTerminateablePod(ctx, matchingPods, agentMinIdleDuration); err != nil {
 				logger.Info("unable to get terminateable pod")
 				return ctrl.Result{}, err
 			} else {
@@ -600,7 +605,8 @@ func (r *AutoScaledAgentReconciler) deletePromisedAnnotationFromPvcs(ctx context
 // swallowed. Note that for kubectl exec, we need to know the container name, but
 // we assume that the first container of the respective podspec is always the
 // Azure DevOps Agent container
-func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context, pods *map[string][]corev1.Pod) (*corev1.Pod, string, error) {
+func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context,
+	pods *map[string][]corev1.Pod, agentMinIdlePeriod time.Duration) (*corev1.Pod, string, error) {
 	logger := log.FromContext(ctx)
 	for _, podList := range *pods {
 		for _, pod := range podList {
@@ -639,14 +645,14 @@ func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context, pod
 						}
 					} else {
 						// Determine whether the date stored in the IdleAgentPodFirstDetectionTimestampAnnotationKey
-						// annotation is older than AgentMinIdlePeriodSeconds seconds
+						// annotation is older than agentMinIdlePeriod
 						firstDetectionTimestampStr := pod.Annotations[service.IdleAgentPodFirstDetectionTimestampAnnotationKey]
 						firstDetectionTimestamp, err := time.Parse(timestampFormat, firstDetectionTimestampStr)
 						if err != nil {
 							// Note that we ignore this error, because it is not critical
 							logger.Info("getTerminateablePod(): unable to parse the first idle detection timestamp annotation", "podName", pod.Name, "err", err)
 						} else {
-							if time.Since(firstDetectionTimestamp).Seconds() >= service.AgentMinIdlePeriodSeconds {
+							if time.Since(firstDetectionTimestamp) >= agentMinIdlePeriod {
 								return &pod, "AZP agent is idle (no Agent.Worker processes)", nil
 							} else {
 								logger.Info("getTerminateablePod(): AZP agent is idle, but has not been idle for long enough", "podName", pod.Name, "firstDetectionTimestamp", firstDetectionTimestamp)

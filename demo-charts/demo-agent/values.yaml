@@ -3,6 +3,7 @@
 poolName: "name of your Azure Pipelines agent pool"
 organizationUrl: "URL of your Azure Pipelines organization (https://dev.azure.com/org-name)"
 maxTerminatedPodsToKeep: 1
+agentMinIdlePeriod: "5m"
 pat: ""  # Override this via --set
 # Overwrite default values, if necessary:
 dummyAgentGarbageCollectionInterval: "30m"

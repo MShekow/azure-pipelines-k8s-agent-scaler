@@ -93,6 +93,11 @@ func (in *AutoScaledAgentSpec) DeepCopyInto(out *AutoScaledAgentSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.AgentMinIdlePeriod != nil {
+		in, out := &in.AgentMinIdlePeriod, &out.AgentMinIdlePeriod
+		*out = new(metav1.Duration)
+		**out = **in
+	}
 	if in.DummyAgentGarbageCollectionInterval != nil {
 		in, out := &in.DummyAgentGarbageCollectionInterval, &out.DummyAgentGarbageCollectionInterval
 		*out = new(metav1.Duration)
