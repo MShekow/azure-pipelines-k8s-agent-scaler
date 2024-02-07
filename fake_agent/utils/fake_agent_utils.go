@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -338,4 +339,26 @@ func StartWorkerProcess() (*os.Process, error) {
 		return nil, err
 	}
 	return cmd.Process, nil
+}
+
+func GetEligibleJobsSortedByStartDelay(jobs []fake_platform_server.Job) []fake_platform_server.Job {
+	var eligibleJobs []fake_platform_server.Job
+	for _, job := range jobs {
+		if job.State == fake_platform_server.Pending && DoesFakeAgentCapabilitiesSatisfyDemands(job.Demands) {
+			eligibleJobs = append(eligibleJobs, job)
+		} else {
+			fmt.Printf("Job with ID %d does not match capabilities or demands. State=%s, demands=%v\n", job.ID, job.State, job.Demands)
+		}
+	}
+
+	if len(eligibleJobs) == 0 {
+		return nil
+	}
+
+	// Sort eligibleJobs by StartDelay
+	sort.Slice(eligibleJobs, func(i, j int) bool {
+		return eligibleJobs[i].StartDelay < eligibleJobs[j].StartDelay
+	})
+
+	return eligibleJobs
 }

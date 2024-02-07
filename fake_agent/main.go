@@ -50,10 +50,12 @@ func main() {
 
 	assignedJob := fake_platform_server.Job{}
 	hasAssignedJob := false
+	holdBeforeAssignTimestamp := time.Time{}
 	assignedTimestamp := time.Time{}
 	startedTimestamp := time.Time{}
-	stoppedTimestamp := time.Time{}
+	isStopped := false
 	proc := &os.Process{}
+	getJobErrorCount := 0
 
 	// Main loop
 	/*
@@ -79,18 +81,40 @@ func main() {
 		jobs, err := fake_agent_utils.GetPendingJobs(organizationUrl, poolId, httpClient)
 		if err != nil {
 			fmt.Printf("Unable to retrieve pending jobs: %v\n", err)
-			os.Exit(1)
+			getJobErrorCount++
+			if getJobErrorCount >= 5 {
+				fmt.Println("Too many errors while trying to retrieve pending jobs, exiting")
+				os.Exit(1)
+			}
 		}
+		getJobErrorCount = 0
 		fmt.Printf("Retrieved %d pending/running jobs\n", len(jobs))
 
 		if !hasAssignedJob {
 			// Try to assign the agent to a pending job, given that capabilities and demands match
-			for _, job := range jobs {
-				if job.State == fake_platform_server.Pending && fake_agent_utils.DoesFakeAgentCapabilitiesSatisfyDemands(job.Demands) {
+			eligibleJobs := fake_agent_utils.GetEligibleJobsSortedByStartDelay(jobs)
+			for _, job := range eligibleJobs {
+				shouldAttemptAssign := false
+				if job.StartDelay > 0 {
+					if holdBeforeAssignTimestamp.IsZero() {
+						holdBeforeAssignTimestamp = time.Now()
+						fmt.Println("Found job with StartDelay, holding before assign")
+					} else if time.Now().After(holdBeforeAssignTimestamp.Add(time.Duration(job.StartDelay))) {
+						shouldAttemptAssign = true
+						fmt.Println("StartDelay has passed, attempting to assign")
+					} else {
+						fmt.Println("StartDelay has not passed yet, waiting")
+					}
+				} else {
+					shouldAttemptAssign = true
+				}
+
+				if shouldAttemptAssign {
 					err = fake_agent_utils.AssignJob(organizationUrl, agentName, job.ID, httpClient)
 					if err != nil {
 						var agentAssignmentConflictError *fake_agent_utils.ConflictError
 						if errors.As(err, &agentAssignmentConflictError) {
+							fmt.Println("Conflict error while trying to assign job, retrying")
 							continue
 						}
 						fmt.Printf("Unable to assign job: %v\n", err)
@@ -99,8 +123,6 @@ func main() {
 					assignedJob = job
 					hasAssignedJob = true
 					break
-				} else {
-					fmt.Printf("Job with ID %d does not match capabilities or demands. State=%s, demands=%v\n", job.ID, job.State, job.Demands)
 				}
 			}
 
@@ -124,9 +146,7 @@ func main() {
 			}
 
 		} else {
-			// If the job has been cancelled (no longer present in the list):
-			// - If startedTimestamp is set but stoppedTimestamp is not set: kill the fake "Agent.Worker" binary
-			// - break out of the loop
+			// If the job has been cancelled (no longer present in the list)
 			jobIsCancelled := true
 			for _, job := range jobs {
 				if job.ID == assignedJob.ID {
@@ -136,13 +156,14 @@ func main() {
 			}
 
 			if jobIsCancelled {
-				if !stoppedTimestamp.IsZero() {
+				if !isStopped {
 					err = proc.Kill()
 					if err != nil {
-						return
+						fmt.Printf("Unable to kill worker process: %v\n", err)
 					}
 				}
 				fmt.Println("Job has been cancelled")
+				isStopped = true
 				break
 			}
 
@@ -163,10 +184,10 @@ func main() {
 					// Kill the "Agent.Worker" process
 					err = proc.Kill()
 					if err != nil {
-						return
+						fmt.Printf("Unable to kill worker process: %v\n", err)
 					}
 
-					stoppedTimestamp = time.Now()
+					isStopped = true
 
 					// Call the finish-job API
 					err = fake_agent_utils.FinishJob(organizationUrl, agentName, assignedJob.ID, httpClient)
@@ -186,9 +207,11 @@ func main() {
 	}
 
 	// Finally, kill the "Agent.Worker" process again, and once FinishDelay has passed, deregister the agent again
-	if !startedTimestamp.IsZero() {
+	wasWorkerProcessedStarted := !startedTimestamp.IsZero()
+	if wasWorkerProcessedStarted && !isStopped {
 		err = proc.Kill()
 		if err != nil {
+			fmt.Printf("Unable to kill worker process: %v\n", err)
 			return
 		}
 	}
