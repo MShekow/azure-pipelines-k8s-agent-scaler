@@ -37,6 +37,8 @@ type FakeAzurePipelinesPlatformServer struct {
 }
 
 func NewFakeAzurePipelinesPlatformServer() *FakeAzurePipelinesPlatformServer {
+	// TODO upgrade to Go 1.22 which has the functionalities built-in, see https://antonz.org/go-1-22/
+	//  meaning that we won't need to use github.com/gorilla/mux any longer
 	router := mux.NewRouter()
 
 	platformServer := &FakeAzurePipelinesPlatformServer{
@@ -119,7 +121,7 @@ func (f *FakeAzurePipelinesPlatformServer) getJob(jobId int) *Job {
 }
 
 // AddJob advertises a new job. It is called from the test code.
-func (f *FakeAzurePipelinesPlatformServer) AddJob(jobId int, poolId int, duration int64, demands map[string]string) error {
+func (f *FakeAzurePipelinesPlatformServer) AddJob(jobId int, poolId int, duration int64, startDelay int64, demands map[string]string) error {
 	// Verify that the jobId is globally unique
 	if f.getJob(jobId) != nil {
 		return fmt.Errorf("JobId already in use")
@@ -139,11 +141,12 @@ func (f *FakeAzurePipelinesPlatformServer) AddJob(jobId int, poolId int, duratio
 	})
 
 	job := Job{
-		ID:       jobId,
-		PoolID:   poolId,
-		State:    Pending,
-		Duration: duration,
-		Demands:  demandsArray,
+		ID:         jobId,
+		PoolID:     poolId,
+		State:      Pending,
+		Duration:   duration,
+		StartDelay: startDelay,
+		Demands:    demandsArray,
 	}
 	f.saveJob(job)
 

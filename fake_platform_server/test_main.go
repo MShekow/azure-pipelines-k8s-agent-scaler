@@ -17,7 +17,7 @@ func MainTest() {
 	fakeDemands := map[string]string{
 		"foo": "bar",
 	}
-	err = fakePlatformServer.AddJob(2, 1, int64(30*time.Second), fakeDemands)
+	err = fakePlatformServer.AddJob(2, 1, int64(30*time.Second), 0, fakeDemands)
 	if err != nil {
 		panic(err)
 	}

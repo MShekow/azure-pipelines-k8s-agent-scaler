@@ -95,7 +95,7 @@ var _ = Describe("Empty server", func() {
 				"qux": "zzz",
 			}
 			duration := int64(30 * time.Second)
-			err = server.AddJob(jobId, poolId, duration, demands)
+			err = server.AddJob(jobId, poolId, duration, 0, demands)
 			Expect(err).ToNot(HaveOccurred())
 
 			jobs, err = utils.GetPendingJobs(fakeOrganizationUrl, int64(poolId), httpClient)
@@ -124,7 +124,7 @@ var _ = Describe("Empty server", func() {
 				"qux": "zzz",
 			}
 			duration := int64(30 * time.Second)
-			err := server.AddJob(jobId, poolId, duration, demands)
+			err := server.AddJob(jobId, poolId, duration, 0, demands)
 			Expect(err).ToNot(HaveOccurred())
 
 			agentName := "test-agent"
@@ -159,7 +159,7 @@ var _ = Describe("Empty server", func() {
 				"qux": "zzz",
 			}
 			duration := int64(30 * time.Second)
-			err := server.AddJob(jobId, poolId, duration, demands)
+			err := server.AddJob(jobId, poolId, duration, 0, demands)
 			Expect(err).ToNot(HaveOccurred())
 
 			err = utils.AssignJob(fakeOrganizationUrl, "test-agent", jobId, httpClient)
