@@ -659,7 +659,23 @@ func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context,
 							}
 						}
 					}
+				} else if stdout == "1\n" {
+					logger.Info("getTerminateablePod(): AZP agent container has one active Agent.Worker process", "podName", pod.Name)
+					// Possibly delete the first idle detection timestamp annotation, because the agent is no longer idle
+					if _, exists := pod.Annotations[service.IdleAgentPodFirstDetectionTimestampAnnotationKey]; exists {
+						delete(pod.Annotations, service.IdleAgentPodFirstDetectionTimestampAnnotationKey)
+						err = r.Update(ctx, &pod)
+						if err != nil {
+							// Note that we ignore this error, because it is not critical
+							logger.Info("getTerminateablePod(): unable to remove the idle detection timestamp annotation", "podName", pod.Name, "err", err)
+						}
+					}
+				} else {
+					logger.Info("getTerminateablePod(): got unexpected stdout of AZP agent container", "podName", pod.Name, "stdout", stdout)
 				}
+			} else {
+				// Note that we ignore this error, because it is not critical
+				logger.Info("getTerminateablePod(): unable to exec command in pod", "podName", pod.Name, "err", err)
 			}
 		}
 	}
