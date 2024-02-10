@@ -81,14 +81,6 @@ func uninstallControllerChart() error {
 	return err
 }
 
-func durationMustParse(s string) *metav1.Duration {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		panic(err)
-	}
-	return &metav1.Duration{Duration: d}
-}
-
 func getPodLogs(pod corev1.Pod) string {
 	podLogOpts := corev1.PodLogOptions{}
 	// creates the clientset
@@ -212,7 +204,30 @@ const (
 	ContainerStateTerminated       ContainerState = "Terminated"
 )
 
+func intersection(pS ...[]string) []string {
+	hash := make(map[string]*int) // value, counter
+	result := make([]string, 0)
+	for _, slice := range pS {
+		duplicationHash := make(map[string]bool) // duplication checking for individual slice
+		for _, value := range slice {
+			if _, isDup := duplicationHash[value]; !isDup { // is not duplicated in slice
+				if counter := hash[value]; counter != nil { // is found in hash counter map
+					if *counter++; *counter >= len(pS) { // is found in every slice
+						result = append(result, value)
+					}
+				} else { // not found in hash counter map
+					i := 1
+					hash[value] = &i
+				}
+				duplicationHash[value] = true
+			}
+		}
+	}
+	return result
+}
+
 var _ = Describe("AutoscaledagentController End-to-end tests", func() {
+	var agentMinIdlePeriodDefault = &metav1.Duration{Duration: 1 * time.Second}
 	var agentContainer corev1.Container
 	var autoScaledAgent *azurepipelinesk8sscaleriov1.AutoScaledAgent
 	var preStopLifecycleHandler *corev1.Lifecycle
@@ -288,10 +303,10 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 				OrganizationUrl:                     organizationUrl,
 				PersonalAccessTokenSecretName:       azpSecretName,
 				MaxTerminatedPodsToKeep:             &[]int32{0}[0],
-				AgentMinIdlePeriod:                  durationMustParse("1s"),
-				DummyAgentGarbageCollectionInterval: durationMustParse("1h"),
-				DummyAgentDeletionMinAge:            durationMustParse("1h"),
-				NormalOfflineAgentDeletionMinAge:    durationMustParse("1h"),
+				AgentMinIdlePeriod:                  agentMinIdlePeriodDefault,
+				DummyAgentGarbageCollectionInterval: &metav1.Duration{Duration: 1 * time.Hour},
+				DummyAgentDeletionMinAge:            &metav1.Duration{Duration: 1 * time.Hour},
+				NormalOfflineAgentDeletionMinAge:    &metav1.Duration{Duration: 1 * time.Hour},
 				PodsWithCapabilities: []azurepipelinesk8sscaleriov1.PodsWithCapabilities{
 					{
 						Capabilities: map[string]string{},
@@ -350,7 +365,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		// 2. Advertise a matching job (10 seconds duration), expect that the pod is created within 6 seconds
 		// (6 seconds because the controller manager queries the API every 5 seconds, +1 second to reduce flakiness)
 		jobDuration := 10 * time.Second
-		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, map[string]string{})
+		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
 		Eventually(hasOnePod, 6*time.Second, 1*time.Second).Should(BeTrue())
 
 		// Check that the agent container is running for approximately the job's duration
@@ -395,9 +410,9 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		// the pods are created within 6 seconds
 		// (6 seconds because the controller manager queries the API every 5 seconds, +1 second to reduce flakiness)
 		jobDuration := 10 * time.Second
-		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, firstPodTemplateCapabilities)
-		_ = server.AddJob(2, azpPoolId, int64(jobDuration), 0, firstPodTemplateCapabilities)
-		_ = server.AddJob(3, azpPoolId, int64(jobDuration), 0, secondPodTemplateCapabilities)
+		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0, firstPodTemplateCapabilities)
+		_ = server.AddJob(2, azpPoolId, int64(jobDuration), 0, 0, firstPodTemplateCapabilities)
+		_ = server.AddJob(3, azpPoolId, int64(jobDuration), 0, 0, secondPodTemplateCapabilities)
 		hasThreePods := func() (bool, error) { return hasNumberXofPods(3) }
 		Eventually(hasThreePods, 6*time.Second, 1*time.Second).Should(BeTrue())
 
@@ -450,7 +465,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 			// (6 seconds because the controller manager queries the API every 5 seconds, +1 second to reduce flakiness)
 			jobDuration := 10 * time.Second
 			serverRequestIndexPriorToAddJob := len(server.Requests)
-			_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, map[string]string{})
+			_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
 			Eventually(hasOnePod, 6*time.Second, 1*time.Second).Should(BeTrue())
 
 			// Check that the agent container is running for approximately the job's duration
@@ -510,7 +525,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		serverRequestIndexPriorToAddJob := len(server.Requests)
 		jobDuration := 10 * time.Second
 		preStartDelay := 30 * time.Second
-		_ = server.AddJob(1, azpPoolId, int64(jobDuration), int64(preStartDelay), map[string]string{})
+		_ = server.AddJob(1, azpPoolId, int64(jobDuration), int64(preStartDelay), 0, map[string]string{})
 		Eventually(hasOnePod, 6*time.Second, 1*time.Second).Should(BeTrue())
 
 		// Continuously for 10 seconds, verify that the fake platform server does not have any AssignJob requests yet
@@ -542,7 +557,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		// (6 seconds because the controller manager queries the API every 5 seconds, +1 second to reduce flakiness)
 		serverRequestIndexPriorToAddJob := len(server.Requests)
 		jobDuration := 30 * time.Second
-		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, map[string]string{})
+		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
 		Eventually(hasOnePod, 6*time.Second, 1*time.Second).Should(BeTrue())
 
 		// The pod should continue running for 10 seconds
@@ -589,7 +604,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		// (6 seconds because the controller manager queries the API every 5 seconds, +1 second to reduce flakiness)
 		serverRequestIndexPriorToAddJob := len(server.Requests)
 		jobDuration := 30 * time.Second
-		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, map[string]string{})
+		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
 		Eventually(hasOnePod, 6*time.Second, 1*time.Second).Should(BeTrue())
 
 		// The pod should be unscheduled for 10 seconds
@@ -616,7 +631,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 	})
 
 	It("Exceed maxCount", func() {
-		// 1. Deploy CR, using an unschedulable node taint
+		// 1. Deploy CR
 		maxCount := 2
 		autoScaledAgent.Spec.PodsWithCapabilities[0].MaxCount = &[]int32{int32(maxCount)}[0]
 		Expect(k8sClient.Create(ctx, autoScaledAgent)).Should(Succeed())
@@ -627,9 +642,9 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		// 2. Advertise three jobs (each with a duration of 10 seconds), expect that two Pods are created, whose
 		// name we remember
 		jobDuration := 10 * time.Second
-		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, map[string]string{})
-		_ = server.AddJob(2, azpPoolId, int64(jobDuration), 0, map[string]string{})
-		_ = server.AddJob(3, azpPoolId, int64(jobDuration), 0, map[string]string{})
+		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
+		_ = server.AddJob(2, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
+		_ = server.AddJob(3, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
 		hasTwoPods := func() (bool, error) { return hasNumberXofPods(2) }
 		Eventually(hasTwoPods, 6*time.Second, 1*time.Second).Should(BeTrue())
 		Consistently(hasTwoPods, jobDuration-2*time.Second, 1*time.Second).Should(BeTrue())
@@ -654,5 +669,155 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		}, 12*time.Second, 500*time.Millisecond).Should(BeTrue())
 
 		Eventually(hasZeroPods, jobDuration+6*time.Second, 500*time.Millisecond).Should(BeTrue())
+
+		// 4. Ensure that no new pods come up
+		Consistently(hasZeroPods, 10*time.Second, 1*time.Second).Should(BeTrue())
+	})
+
+	It("minCount with one job", func() {
+		// 1. Deploy CR
+		minCount := 3
+		autoScaledAgent.Spec.PodsWithCapabilities[0].MinCount = &[]int32{int32(minCount)}[0]
+		autoScaledAgent.Spec.PodsWithCapabilities[0].MaxCount = &[]int32{999}[0]
+		Expect(k8sClient.Create(ctx, autoScaledAgent)).Should(Succeed())
+
+		// 2. Wait for the 3 minCount pods to appear. Retrieve and save their names
+		hasThreePods := func() (bool, error) { return hasNumberXofPods(3) }
+		Eventually(hasThreePods, 6*time.Second, 1*time.Second).Should(BeTrue())
+		pod1, err := getPodInTestNamespace(0)
+		Expect(err).NotTo(HaveOccurred())
+		pod2, err := getPodInTestNamespace(1)
+		Expect(err).NotTo(HaveOccurred())
+		pod3, err := getPodInTestNamespace(2)
+		Expect(err).NotTo(HaveOccurred())
+
+		// 3. Verify that they keep running for 10 seconds
+		Consistently(hasThreePods, 10*time.Second, 1*time.Second).Should(BeTrue())
+
+		// 4. Verify that there are no AssignJob requests
+		for _, req := range server.Requests {
+			Expect(req.Type).NotTo(Equal(fake_platform_server.AssignJob))
+		}
+
+		// 5. Schedule 1 job, 10 sec duration
+		jobDuration := 10 * time.Second
+		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
+
+		// 6. Verify that the pods remain stable during the job duration
+		Consistently(func() (bool, error) {
+			p1, err := getPodInTestNamespace(0)
+			if err != nil {
+				return false, err
+			}
+			p2, err := getPodInTestNamespace(1)
+			if err != nil {
+				return false, err
+			}
+			p3, err := getPodInTestNamespace(2)
+			if err != nil {
+				return false, err
+			}
+			_, err = getPodInTestNamespace(3)
+			if err == nil {
+				return false, err // a fourth Pod may not exist
+			}
+			return p1.Name == pod1.Name && p2.Name == pod2.Name && p3.Name == pod3.Name, nil
+		}, jobDuration, 1*time.Second).Should(BeTrue())
+
+		// 7. Verify that there are 3 pods, but one of them has a different name
+		originalPodNames := []string{pod1.Name, pod2.Name, pod3.Name}
+		Eventually(func() (bool, error) {
+			podList := &corev1.PodList{}
+			err := k8sClient.List(ctx, podList, client.InNamespace(testNamespace))
+			if err != nil {
+				return false, err
+			}
+			if len(podList.Items) != 3 {
+				return false, nil
+			}
+			currentPodNames := []string{podList.Items[0].Name, podList.Items[1].Name, podList.Items[2].Name}
+			return len(intersection(originalPodNames, currentPodNames)) == 2, nil
+		}, 6*time.Second, 1*time.Second).Should(BeTrue())
+	})
+
+	for _, agentMinIdlePeriod := range []metav1.Duration{*agentMinIdlePeriodDefault, {Duration: 10 * time.Second}} {
+		agentMinIdlePeriod := agentMinIdlePeriod // see https://onsi.github.io/ginkgo/#dynamically-generating-specs
+		It("minCount reduction", func() {
+			// 1. Deploy CR
+			minCount := 3
+			autoScaledAgent.Spec.PodsWithCapabilities[0].MinCount = &[]int32{int32(minCount)}[0]
+			autoScaledAgent.Spec.PodsWithCapabilities[0].MaxCount = &[]int32{999}[0]
+			autoScaledAgent.Spec.AgentMinIdlePeriod = &agentMinIdlePeriod
+			Expect(k8sClient.Create(ctx, autoScaledAgent)).Should(Succeed())
+
+			// 2. Wait for the 3 minCount pods to appear. Retrieve and save their names
+			hasThreePods := func() (bool, error) { return hasNumberXofPods(3) }
+			Eventually(hasThreePods, 6*time.Second, 1*time.Second).Should(BeTrue())
+			pod1, err := getPodInTestNamespace(0)
+			Expect(err).NotTo(HaveOccurred())
+			pod2, err := getPodInTestNamespace(1)
+			Expect(err).NotTo(HaveOccurred())
+			pod3, err := getPodInTestNamespace(2)
+			Expect(err).NotTo(HaveOccurred())
+
+			// 3. Verify that they keep running for 10 seconds
+			Consistently(hasThreePods, 10*time.Second, 1*time.Second).Should(BeTrue())
+
+			// 4. Verify that there are no AssignJob requests
+			for _, req := range server.Requests {
+				Expect(req.Type).NotTo(Equal(fake_platform_server.AssignJob))
+			}
+
+			// 5. Reduce the minCount
+			minCount = 1
+			autoScaledAgent.Spec.PodsWithCapabilities[0].MinCount = &[]int32{int32(minCount)}[0]
+			Expect(k8sClient.Update(ctx, autoScaledAgent)).Should(Succeed())
+
+			// 5. Wait for the pod count to have changed to 1, verify that the remaining Pod's name is one
+			// of the 3 original pod names. However, during agentMinIdlePeriod, the pod count should remain 3
+			Consistently(hasThreePods, agentMinIdlePeriod.Duration, 1*time.Second).Should(BeTrue())
+			Eventually(hasOnePod, 15*time.Second, 1*time.Second).Should(BeTrue())
+			p1New, err := getPodInTestNamespace(0)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(intersection([]string{p1New.Name}, []string{pod1.Name, pod2.Name, pod3.Name})).To(HaveLen(1))
+			// Note: the down-scaling is somewhat slow. First, the controller-manager needs to assign the
+			// IdleAgentPodFirstDetectionTimestampAnnotationKey annotation to the Pod, and only in the next loop the
+			// controller-manager deletes a Pod, and it only deletes one Pod per reconciliation loop.
+		})
+	}
+
+	It("FinishDelay check", func() {
+		// 1. Deploy CR
+		Expect(k8sClient.Create(ctx, autoScaledAgent)).Should(Succeed())
+
+		// Wait until the controller-manager is ready, having made the required calls to the fake platform server
+		Eventually(checkInitialControllerManagerCallsAgainstFakePlatformServer, 20*time.Second, 1*time.Second).Should(BeTrue())
+
+		// 2. Advertise a job (duration 10 seconds, FinishDelay 10 seconds), expect that the pod is created within 6 seconds
+		serverRequestIndexPriorToAddJob := len(server.Requests)
+		jobDuration := 10 * time.Second
+		finishDelay := 10 * time.Second
+		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, int64(finishDelay), map[string]string{})
+		Eventually(hasOnePod, 6*time.Second, 1*time.Second).Should(BeTrue())
+
+		// The pod should continue running for the job's duration + some extra time (needed for tear-down)
+		Consistently(checkAgentContainerIsWaitingOrRunning, jobDuration+1*time.Second, 500*time.Millisecond).Should(BeTrue())
+
+		// Verify the requests made by the agent container
+		expectedRequestTypes := []ExpectedRequestType{
+			{Type: fake_platform_server.ListJob, Min: 1, Max: unlimitedInt},
+			{Type: fake_platform_server.GetPoolId, Min: 1, Max: 1},
+			{Type: fake_platform_server.CreateAgent, Min: 1, Max: 1},
+			{Type: fake_platform_server.ListJob, Min: 1, Max: unlimitedInt},
+			{Type: fake_platform_server.AssignJob, Min: 1, Max: 1},
+			{Type: fake_platform_server.ListJob, Min: 1, Max: unlimitedInt},
+			{Type: fake_platform_server.FinishJob, Min: 1, Max: untilEnd},
+		}
+		err := checkRequests(server.Requests, serverRequestIndexPriorToAddJob, expectedRequestTypes)
+		Expect(err).NotTo(HaveOccurred())
+
+		// 3. Verify that agent container still lives for the FinishDelay, before the pod disappears
+		Consistently(checkAgentContainerIsWaitingOrRunning, finishDelay-1*time.Second, 500*time.Millisecond).Should(BeTrue())
+		Eventually(hasZeroPods, 6*time.Second, 500*time.Millisecond).Should(BeTrue())
 	})
 })

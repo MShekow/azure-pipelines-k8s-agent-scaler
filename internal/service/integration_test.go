@@ -36,14 +36,6 @@ func GetFreeLocalPort(portRangeStart int, portRangeEnd int) (int, error) {
 	return 0, fmt.Errorf("no free port found in range %d-%d", portRangeStart, portRangeEnd)
 }
 
-func durationMustParse(s string) *v1meta.Duration {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		panic(err)
-	}
-	return &v1meta.Duration{Duration: d}
-}
-
 var _ = Describe("Integration tests", func() {
 	var httpClient *http.Client
 	var server *fake_platform_server.FakeAzurePipelinesPlatformServer
@@ -181,9 +173,9 @@ var _ = Describe("Integration tests", func() {
 				"bar": "1",
 			}
 			duration := int64(30 * time.Second)
-			err := server.AddJob(jobId1, serverPoolId, duration, 0, demands1)
+			err := server.AddJob(jobId1, serverPoolId, duration, 0, 0, demands1)
 			Expect(err).ToNot(HaveOccurred())
-			err = server.AddJob(jobId2, serverPoolId, duration, 0, demands2)
+			err = server.AddJob(jobId2, serverPoolId, duration, 0, 0, demands2)
 			Expect(err).ToNot(HaveOccurred())
 
 			agentSpec := v1.AutoScaledAgentSpec{
@@ -220,11 +212,11 @@ var _ = Describe("Integration tests", func() {
 				"bar": "1",
 			}
 			duration := int64(30 * time.Second)
-			err := server.AddJob(jobId1, serverPoolId, duration, 0, demands1and2)
+			err := server.AddJob(jobId1, serverPoolId, duration, 0, 0, demands1and2)
 			Expect(err).ToNot(HaveOccurred())
-			err = server.AddJob(jobId2, serverPoolId, duration, 0, demands1and2)
+			err = server.AddJob(jobId2, serverPoolId, duration, 0, 0, demands1and2)
 			Expect(err).ToNot(HaveOccurred())
-			err = server.AddJob(jobId3, serverPoolId, duration, 0, demands3)
+			err = server.AddJob(jobId3, serverPoolId, duration, 0, 0, demands3)
 			Expect(err).ToNot(HaveOccurred())
 
 			agentSpec := v1.AutoScaledAgentSpec{
@@ -285,9 +277,9 @@ var _ = Describe("Integration tests", func() {
 						Capabilities: map[string]string{"bar": "1"},
 					},
 				},
-				DummyAgentGarbageCollectionInterval: durationMustParse("0s"), // disable the throttling-protection
-				DummyAgentDeletionMinAge:            durationMustParse("1h"),
-				NormalOfflineAgentDeletionMinAge:    durationMustParse("1h"),
+				DummyAgentGarbageCollectionInterval: &v1meta.Duration{Duration: 0}, // disable the throttling-protection
+				DummyAgentDeletionMinAge:            &v1meta.Duration{Duration: 1 * time.Hour},
+				NormalOfflineAgentDeletionMinAge:    &v1meta.Duration{Duration: 1 * time.Hour},
 			}
 			agentDummyNames, err := service.CreateOrUpdateDummyAgents(context.Background(), serverPoolId, fakePat, httpClient, crName, &agentSpec)
 			Expect(err).ToNot(HaveOccurred())

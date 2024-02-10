@@ -121,7 +121,7 @@ func (f *FakeAzurePipelinesPlatformServer) getJob(jobId int) *Job {
 }
 
 // AddJob advertises a new job. It is called from the test code.
-func (f *FakeAzurePipelinesPlatformServer) AddJob(jobId int, poolId int, duration int64, startDelay int64, demands map[string]string) error {
+func (f *FakeAzurePipelinesPlatformServer) AddJob(jobId int, poolId int, duration, startDelay, finishDelay int64, demands map[string]string) error {
 	// Verify that the jobId is globally unique
 	if f.getJob(jobId) != nil {
 		return fmt.Errorf("JobId already in use")
@@ -141,12 +141,13 @@ func (f *FakeAzurePipelinesPlatformServer) AddJob(jobId int, poolId int, duratio
 	})
 
 	job := Job{
-		ID:         jobId,
-		PoolID:     poolId,
-		State:      Pending,
-		Duration:   duration,
-		StartDelay: startDelay,
-		Demands:    demandsArray,
+		ID:          jobId,
+		PoolID:      poolId,
+		State:       Pending,
+		Duration:    duration,
+		StartDelay:  startDelay,
+		FinishDelay: finishDelay,
+		Demands:     demandsArray,
 	}
 	f.saveJob(job)
 
