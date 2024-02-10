@@ -208,10 +208,14 @@ func GetPendingJobs(organizationUrl string, poolId int64, httpClient *http.Clien
 		durationInNanos, _ := strconv.ParseInt(jobRequestFromApi.ScopeID, 10, 64)
 		startDelayInNanos, _ := strconv.ParseInt(jobRequestFromApi.HostID, 10, 64)
 		finishDelayInNanos, _ := strconv.ParseInt(jobRequestFromApi.PlanID, 10, 64)
+		state := fake_platform_server.Pending
+		if !jobRequestFromApi.AssignTime.IsZero() {
+			state = fake_platform_server.InProgress
+		}
 		job := fake_platform_server.Job{
 			ID:          jobId,
 			PoolID:      int(poolId),
-			State:       fake_platform_server.Pending,
+			State:       state,
 			Duration:    durationInNanos,
 			StartDelay:  startDelayInNanos,
 			FinishDelay: finishDelayInNanos,
