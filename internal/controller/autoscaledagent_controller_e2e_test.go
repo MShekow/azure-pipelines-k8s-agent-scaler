@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 	"io"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"os"
@@ -229,6 +230,7 @@ func intersection(pS ...[]string) []string {
 var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 	var agentMinIdlePeriodDefault = &metav1.Duration{Duration: 1 * time.Second}
 	var agentContainer corev1.Container
+	var workspaceVolume corev1.Volume
 	var autoScaledAgent *azurepipelinesk8sscaleriov1.AutoScaledAgent
 	var preStopLifecycleHandler *corev1.Lifecycle
 	var checkContainerHasState = func(podIndex, containerIndex int, state ContainerState) (bool, error) {
@@ -287,11 +289,24 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 				},
 			},
 		}
+		workspaceVolumeName := "workspace"
 		agentContainer = corev1.Container{
 			Name:            "azure-pipelines-agent",
 			Image:           localFakeAgentImage,
 			ImagePullPolicy: corev1.PullIfNotPresent,
 			Lifecycle:       preStopLifecycleHandler,
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      workspaceVolumeName,
+					MountPath: "/azp/_work",
+				},
+			},
+		}
+		workspaceVolume = corev1.Volume{
+			Name: workspaceVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
 		}
 		autoScaledAgent = &azurepipelinesk8sscaleriov1.AutoScaledAgent{
 			ObjectMeta: metav1.ObjectMeta{
@@ -317,6 +332,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 								TerminationGracePeriodSeconds: &[]int64{1200}[0],
 								ShareProcessNamespace:         &[]bool{true}[0],
 								Containers:                    []corev1.Container{agentContainer},
+								Volumes:                       []corev1.Volume{workspaceVolume},
 							},
 						},
 					},
@@ -397,6 +413,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 					TerminationGracePeriodSeconds: &[]int64{1200}[0],
 					ShareProcessNamespace:         &[]bool{true}[0],
 					Containers:                    []corev1.Container{agentContainer},
+					Volumes:                       []corev1.Volume{workspaceVolume},
 				},
 			},
 		})
@@ -437,7 +454,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 
 	for maxTerminatedPodsToKeep := 0; maxTerminatedPodsToKeep <= 1; maxTerminatedPodsToKeep++ {
 		maxTerminatedPodsToKeep := maxTerminatedPodsToKeep // makes no sense, yep, but see https://onsi.github.io/ginkgo/#dynamically-generating-specs
-		It("Testing one regular job (with sidecar)", func() {
+		It(fmt.Sprintf("Testing one regular job (with sidecar, maxTerminatedPodsToKeep=%d))", maxTerminatedPodsToKeep), func() {
 			// 1. Deploy CR with one static pod-template (with one side container), don't advertise any jobs for
 			// 15 seconds (no pods should be created)
 			autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers =
@@ -742,7 +759,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 
 	for _, agentMinIdlePeriod := range []metav1.Duration{*agentMinIdlePeriodDefault, {Duration: 10 * time.Second}} {
 		agentMinIdlePeriod := agentMinIdlePeriod // see https://onsi.github.io/ginkgo/#dynamically-generating-specs
-		It("minCount reduction", func() {
+		It(fmt.Sprintf("minCount reduction (%v)", agentMinIdlePeriod), func() {
 			// 1. Deploy CR
 			minCount := 3
 			autoScaledAgent.Spec.PodsWithCapabilities[0].MinCount = &[]int32{int32(minCount)}[0]
@@ -820,4 +837,222 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		Consistently(checkAgentContainerIsWaitingOrRunning, finishDelay-1*time.Second, 500*time.Millisecond).Should(BeTrue())
 		Eventually(hasZeroPods, 6*time.Second, 500*time.Millisecond).Should(BeTrue())
 	})
+
+	It("PVC creation and reuse", func() {
+		// 1. Deploy CR with a reusable cache directory, and min/maxCount = 2
+		cacheVolumeName := "cache-volume"
+		autoScaledAgent.Spec.ReusableCacheVolumes = []azurepipelinesk8sscaleriov1.ReusableCacheVolume{
+			{
+				Name:             cacheVolumeName,
+				StorageClassName: "standard",
+				RequestedStorage: "1Gi",
+			},
+		}
+		autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers =
+			append(autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers, corev1.Container{
+				Name:            "sidecar",
+				Image:           "busybox:latest",
+				ImagePullPolicy: corev1.PullAlways,
+				Lifecycle:       preStopLifecycleHandler,
+				Command:         []string{"/bin/sh"},
+				Args:            []string{"-c", "trap : TERM INT; sleep 9999999999d & wait"},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      cacheVolumeName,
+						MountPath: "/cache",
+					},
+				},
+			})
+		autoScaledAgent.Spec.PodsWithCapabilities[0].MinCount = &[]int32{2}[0]
+		autoScaledAgent.Spec.PodsWithCapabilities[0].MaxCount = &[]int32{999}[0]
+		Expect(k8sClient.Create(ctx, autoScaledAgent)).Should(Succeed())
+
+		// Wait until the controller-manager is ready, having made the required calls to the fake platform server
+		Eventually(checkInitialControllerManagerCallsAgainstFakePlatformServer, 20*time.Second, 1*time.Second).Should(BeTrue())
+
+		// 2. Wait for the 2 minCount pods to appear and that there are two PVCs that have the promised annotation set
+		// to the pod names
+		hasTwoPods := func() (bool, error) { return hasNumberXofPods(2) }
+		Eventually(hasTwoPods, 6*time.Second, 1*time.Second).Should(BeTrue())
+		pod1, err := getPodInTestNamespace(0)
+		Expect(err).NotTo(HaveOccurred())
+		pod2, err := getPodInTestNamespace(1)
+		Expect(err).NotTo(HaveOccurred())
+		podNames := []string{pod1.Name, pod2.Name}
+		pvcList := &corev1.PersistentVolumeClaimList{}
+		err = k8sClient.List(ctx, pvcList, client.InNamespace(testNamespace))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(len(pvcList.Items)).To(Equal(2))
+		pvcNames := []string{pvcList.Items[0].Name, pvcList.Items[1].Name}
+		promisedPodNames := []string{}
+		for _, pvc := range pvcList.Items {
+			promisedPodName, exists := pvc.Annotations[service.ReusableCacheVolumePromisedAnnotationKey]
+			promisedPodNames = append(promisedPodNames, promisedPodName)
+			Expect(exists).To(BeTrue())
+			cacheVolumeNameFromAnnotation, exists := pvc.Annotations[service.ReusableCacheVolumeNameAnnotationKey]
+			Expect(cacheVolumeNameFromAnnotation).To(Equal(cacheVolumeName))
+			Expect(exists).To(BeTrue())
+		}
+		Expect(intersection(podNames, promisedPodNames)).To(HaveLen(2))
+
+		// Verify that the pods are running
+		Consistently(hasTwoPods, 5*time.Second, 500*time.Millisecond).Should(BeTrue())
+
+		// 3. Set minCount to 0, wait until Pods have been deleted
+		autoScaledAgent.Spec.PodsWithCapabilities[0].MinCount = &[]int32{0}[0]
+		Expect(k8sClient.Update(ctx, autoScaledAgent)).Should(Succeed())
+		Eventually(hasZeroPods, 16*time.Second, 1*time.Second).Should(BeTrue())
+
+		// 4. Check that the 2 PVCs still exist, but are no longer promised (which takes a bit of time)
+		checkTwoUnpromisedPvs := func() (bool, error) {
+			pvcList = &corev1.PersistentVolumeClaimList{}
+			err = k8sClient.List(ctx, pvcList, client.InNamespace(testNamespace))
+			if err != nil {
+				return false, err
+			}
+			if len(pvcList.Items) != 2 {
+				return false, nil
+			}
+			for _, pvc := range pvcList.Items {
+				_, exists := pvc.Annotations[service.ReusableCacheVolumePromisedAnnotationKey]
+				if exists {
+					return false, nil
+				}
+			}
+			return true, nil
+		}
+		Eventually(checkTwoUnpromisedPvs, 11*time.Second, 500*time.Millisecond).Should(BeTrue())
+
+		// 5. Update maxCount to 2, then schedule 3 jobs, then wait until all pods are
+		// gone - at any time, we may never see more than 2 pods, and also no more than 2
+		// PVCs
+		autoScaledAgent.Spec.PodsWithCapabilities[0].MaxCount = &[]int32{2}[0]
+		Expect(k8sClient.Update(ctx, autoScaledAgent)).Should(Succeed())
+		jobDuration := 10 * time.Second
+		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
+		_ = server.AddJob(2, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
+		_ = server.AddJob(3, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
+		Consistently(func() (bool, error) {
+			podList := &corev1.PodList{}
+			err := k8sClient.List(ctx, podList, client.InNamespace(testNamespace))
+			if err != nil {
+				return false, err
+			}
+			if len(podList.Items) > 2 {
+				return false, nil
+			}
+			pvcList := &corev1.PersistentVolumeClaimList{}
+			err = k8sClient.List(ctx, pvcList, client.InNamespace(testNamespace))
+			if err != nil {
+				return false, err
+			}
+			if len(pvcList.Items) > 2 {
+				return false, nil
+			}
+			return true, nil
+		}, 2*jobDuration+15*time.Second, 1*time.Second).Should(BeTrue())
+
+		Eventually(hasZeroPods, 21*time.Second, 500*time.Millisecond).Should(BeTrue())
+
+		// 6. Verify that the two PVCs are the same ones as before
+		pvcList = &corev1.PersistentVolumeClaimList{}
+		err = k8sClient.List(ctx, pvcList, client.InNamespace(testNamespace))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(len(pvcList.Items)).To(Equal(2))
+		finalPvcNames := []string{pvcList.Items[0].Name, pvcList.Items[1].Name}
+		Expect(intersection(finalPvcNames, pvcNames)).To(HaveLen(2))
+
+		Eventually(checkTwoUnpromisedPvs, 11*time.Second, 500*time.Millisecond).Should(BeTrue())
+	})
+
+	for _, hasStaticSidecar := range []bool{false, true} {
+		hasStaticSidecar := hasStaticSidecar // see https://onsi.github.io/ginkgo/#dynamically-generating-specs
+		It(fmt.Sprintf("ExtraAgentContainers feature (static sidecar: %t)", hasStaticSidecar), func() {
+			// 1. Deploy CR with a minCount of 1
+			autoScaledAgent.Spec.PodsWithCapabilities[0].MinCount = &[]int32{1}[0]
+			if hasStaticSidecar {
+				autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers =
+					append(autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers, corev1.Container{
+						Name:            "sidecar",
+						Image:           "ubuntu:latest",
+						ImagePullPolicy: corev1.PullAlways,
+						Lifecycle:       preStopLifecycleHandler,
+						Command:         []string{"/bin/sh"},
+						Args:            []string{"-c", "trap : TERM INT; sleep 9999999999d & wait"},
+					})
+			}
+			Expect(k8sClient.Create(ctx, autoScaledAgent)).Should(Succeed())
+
+			// Wait until the controller-manager is ready, having made the required calls to the fake platform server
+			Eventually(checkInitialControllerManagerCallsAgainstFakePlatformServer, 20*time.Second, 1*time.Second).Should(BeTrue())
+
+			// 2. Wait for the pod to be up, note its name
+			Eventually(hasOnePod, 6*time.Second, 1*time.Second).Should(BeTrue())
+			minCountPod1, err := getPodInTestNamespace(0)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Give the agent some time to assign itself to the job (avoiding that serverRequestIndexPriorToAgentStart below
+			// starts too early)
+			time.Sleep(5 * time.Second)
+
+			// 3. Schedule a job with two sidecar containers, one sets cpu+ram, one does not
+			serverRequestIndexPriorToAgentStart := len(server.Requests)
+			jobDuration := 15 * time.Second
+			eacValue := "name=c1,image=alpine:latest,cpu=250m,memory=64Mi||name=c2,image=busybox:latest"
+			_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0,
+				map[string]string{service.ExtraAgentContainersAnnotationKey: eacValue})
+
+			// 4. Verify that a second Pod was started, that the sidecar containers are running, and that
+			// the ExtraAgentContainers env var is present
+			hasTwoPods := func() (bool, error) { return hasNumberXofPods(2) }
+			Eventually(hasTwoPods, 6*time.Second, 1*time.Second).Should(BeTrue())
+			pod1, err := getPodInTestNamespace(0)
+			pod2, err := getPodInTestNamespace(1)
+			correctPod := pod1
+			if pod1.Name == minCountPod1.Name {
+				correctPod = pod2
+			}
+			Expect(err).NotTo(HaveOccurred())
+			expectedLength := 3
+			firstEacContainerIndex := 1
+			if hasStaticSidecar {
+				expectedLength = 4
+				firstEacContainerIndex = 2
+			}
+			Expect(correctPod.Spec.Containers).To(HaveLen(expectedLength))
+			Expect(correctPod.Spec.Containers[firstEacContainerIndex].Name).To(Equal("c1"))
+			Expect(correctPod.Spec.Containers[firstEacContainerIndex].Image).To(Equal("alpine:latest"))
+			Expect(correctPod.Spec.Containers[firstEacContainerIndex].Resources.Requests).To(Equal(corev1.ResourceList{"cpu": resource.MustParse("250m"), "memory": resource.MustParse("64Mi")}))
+			Expect(correctPod.Spec.Containers[firstEacContainerIndex+1].Name).To(Equal("c2"))
+			Expect(correctPod.Spec.Containers[firstEacContainerIndex+1].Image).To(Equal("busybox:latest"))
+			Expect(correctPod.Spec.Containers[0].Env).To(ContainElement(corev1.EnvVar{Name: service.ExtraAgentContainersAnnotationKey, Value: eacValue}))
+
+			// 5. Wait until the EAC-based agent has assigned itself to the job
+			expectedRequestTypes := []ExpectedRequestType{
+				{Type: fake_platform_server.ListJob, Min: 1, Max: unlimitedInt},
+				{Type: fake_platform_server.GetPoolId, Min: 1, Max: 1},
+				{Type: fake_platform_server.CreateAgent, Min: 1, Max: 1},
+				{Type: fake_platform_server.ListJob, Min: 1, Max: unlimitedInt},
+				{Type: fake_platform_server.AssignJob, Min: 1, Max: 1},
+				{Type: fake_platform_server.ListJob, Min: 0, Max: unlimitedInt},
+			}
+			Eventually(func() (bool, error) {
+				err := checkRequests(server.Requests, serverRequestIndexPriorToAgentStart, expectedRequestTypes)
+				if err != nil {
+					return false, err
+				}
+				return correctPod.Name == expectedRequestTypes[4].foundRequests[0].AgentName, nil
+			}, 15*time.Second, 1*time.Second).Should(BeTrue())
+
+			// 6. Eventually, that Pod with the EAC container should disappear and the controller should recreate a new Pod
+			time.Sleep(2 * jobDuration)
+			check, err := hasOnePod()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(check).To(BeTrue())
+			pod1New, err := getPodInTestNamespace(0)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pod1New.Name).To(Not(Equal(minCountPod1.Name)))
+			Expect(pod1New.Name).To(Not(Equal(correctPod.Name)))
+		})
+	}
 })
