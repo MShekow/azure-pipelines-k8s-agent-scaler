@@ -311,9 +311,9 @@ func DeleteAgent(organizationUrl string, agentId int, poolId int64, httpClient *
 func getCapabilitiesMapFromEnv() map[string]string {
 	capabilitiesMapFromEnv := map[string]string{}
 	for _, env := range os.Environ() {
-		envParts := strings.Split(env, "=")
-		if len(envParts) == 2 {
-			capabilitiesMapFromEnv[envParts[0]] = envParts[1]
+		key, value, found := strings.Cut(env, "=")
+		if found {
+			capabilitiesMapFromEnv[key] = value
 		}
 	}
 	return capabilitiesMapFromEnv
