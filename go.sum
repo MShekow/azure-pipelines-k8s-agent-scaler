@@ -5,6 +5,10 @@ github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-2024012409
 github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240124095934-f415087aa87d/go.mod h1:iTBkqyHATOe54DwyDrIpj2M0ydJcsEodsgPJW8ngmks=
 github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240203101151-702daea17129 h1:6TAsRaa0C1BFRpn+OZI+moMAhAosXpA0idhH6PtEa+8=
 github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240203101151-702daea17129/go.mod h1:hF9sh7d963cMhfgUhEVvmkKO8LsJjNgZuaolp+EFeK0=
+github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240211123107-6630c034c17e h1:sD5UX12Qg56qF4grD2tdI6khsNg2liYJ+/2gtAu9fKA=
+github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240211123107-6630c034c17e/go.mod h1:hF9sh7d963cMhfgUhEVvmkKO8LsJjNgZuaolp+EFeK0=
+github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240211123405-2a4bde0f0f25 h1:GRqwDnbMgJgOzHBfgsxT49CIOoEAM7w5XS4dNcSq4CQ=
+github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240211123405-2a4bde0f0f25/go.mod h1:hF9sh7d963cMhfgUhEVvmkKO8LsJjNgZuaolp+EFeK0=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
