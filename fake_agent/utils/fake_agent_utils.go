@@ -323,12 +323,10 @@ func DoesFakeAgentCapabilitiesSatisfyDemands(demands []string) bool {
 	capabilitiesMapFromEnv := getCapabilitiesMapFromEnv()
 
 	for _, demand := range demands {
-		demandParts := strings.Split(demand, " -equals ")
-		if len(demandParts) != 2 {
+		demandKey, demandValue, found := strings.Cut(demand, " -equals ")
+		if !found {
 			continue
 		}
-		demandKey := demandParts[0]
-		demandValue := demandParts[1]
 		if capabilitiesMapFromEnv[demandKey] != demandValue {
 			return false
 		}
