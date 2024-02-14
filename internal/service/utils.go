@@ -507,7 +507,7 @@ func ComputePvcMaxCountsPerReusableCacheVolume(agent *apscalerv1.AutoScaledAgent
 			}
 		}
 
-		for usedReusableCacheVolumeName, _ := range reusableCacheVolumesUsedByThisPod {
+		for usedReusableCacheVolumeName := range reusableCacheVolumesUsedByThisPod {
 			if count, ok := pvcMaxCounts[usedReusableCacheVolumeName]; ok {
 				pvcMaxCounts[usedReusableCacheVolumeName] = count + int(*podsWithCapabilities.MaxCount)
 			} else {
@@ -543,15 +543,15 @@ func HasPodPermanentlyDisappeared(podName string) bool {
 		disappearedPods[podName] = time.Now()
 	}
 
-	age := time.Now().Sub(disappearedPods[podName])
+	age := time.Since(disappearedPods[podName])
 
 	result := age > 5*time.Second
 
 	// Perform garbage collection to avoid memory leaks
-	for pN, t := range disappearedPods {
-		age := time.Now().Sub(t)
+	for podName_, t := range disappearedPods {
+		age := time.Since(t)
 		if age > 60*time.Second {
-			delete(disappearedPods, pN)
+			delete(disappearedPods, podName_)
 		}
 	}
 

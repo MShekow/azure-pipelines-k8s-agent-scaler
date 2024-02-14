@@ -33,7 +33,6 @@ type FakeAzurePipelinesPlatformServer struct {
 	Requests  []Request
 	PoolId    int
 	PoolName  string
-	port      int
 	server    *http.Server
 	isStopped bool
 }

@@ -204,6 +204,7 @@ var _ = BeforeSuite(func() {
 		fmt.Sprintf("%s:%s", localControllerImage, localControllerImageTag),
 	)
 	ctx, err = loadImgFunc(ctx, envCfg)
+	Expect(err).NotTo(HaveOccurred())
 	loadImgFunc = envfuncs.LoadImageToCluster(kindClusterName, localFakeAgentImage)
 	ctx, err = loadImgFunc(ctx, envCfg)
 	Expect(err).NotTo(HaveOccurred())

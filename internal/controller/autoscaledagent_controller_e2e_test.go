@@ -1016,12 +1016,13 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 			hasTwoPods := func() (bool, error) { return hasNumberXofPods(2) }
 			Eventually(hasTwoPods, 6*time.Second, 1*time.Second).Should(BeTrue())
 			pod1, err := getPodInTestNamespace(0)
+			Expect(err).NotTo(HaveOccurred())
 			pod2, err := getPodInTestNamespace(1)
+			Expect(err).NotTo(HaveOccurred())
 			correctPod := pod1
 			if pod1.Name == minCountPod1.Name {
 				correctPod = pod2
 			}
-			Expect(err).NotTo(HaveOccurred())
 			expectedLength := 3
 			firstEacContainerIndex := 1
 			if hasStaticSidecar {

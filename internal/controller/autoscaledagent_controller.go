@@ -633,7 +633,7 @@ func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context,
 			cmd := []string{"sh", "-c", "pgrep -l Agent.Worker | wc -l"}
 			// TODO differentiate the errors somehow - we only want to "swallow" errors where the pod no longer exists,
 			// but still return errors e.g. when K8s RBAC is lacking
-			if stdout, _, err := r.execCommandInPod(pod.Namespace, pod.Name, agentContainerName, cmd); err == nil {
+			if stdout, _, err := r.execCommandInPod(ctx, pod.Namespace, pod.Name, agentContainerName, cmd); err == nil {
 				if stdout == "0\n" {
 					timestampFormat := time.RFC3339
 					if _, exists := pod.Annotations[service.IdleAgentPodFirstDetectionTimestampAnnotationKey]; !exists {
@@ -778,7 +778,7 @@ func (r *AutoScaledAgentReconciler) terminatedFinishedAgentPods(ctx context.Cont
 	return nil
 }
 
-func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, containerName string, command []string) (string, string, error) {
+func (r *AutoScaledAgentReconciler) execCommandInPod(ctx context.Context, podNamespace, podName, containerName string, command []string) (string, string, error) {
 	// See https://github.com/kubernetes-sigs/kubebuilder/issues/803 for pointers
 	req := r.RESTClient.Post().
 		Resource("pods").
@@ -799,7 +799,7 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(podNamespace, podName, cont
 		return "", "", err
 	}
 
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdin:  nil,
 		Stdout: &stdout,
 		Stderr: &stderr,
