@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/e2e-framework/third_party/helm"
 	"strings"
 	"time"
@@ -368,6 +369,11 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 			// deletes all deployed CRs, and consequently, all agent Pods owned by the CR
 			err := uninstallControllerChart()
 			Expect(err).NotTo(HaveOccurred())
+
+			// However, the E2E test suite sometimes has weird issues where unexpected calls to the fake platform server
+			// are made, so I suspect that the clean up takes some time, so let's sleep for a bit to give the K8s
+			// control plane time to clean up
+			time.Sleep(10 * time.Second)
 		}
 	})
 
@@ -796,6 +802,9 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 			Eventually(hasOnePod, 15*time.Second, 1*time.Second).Should(BeTrue())
 			p1New, err := getPodInTestNamespace(0)
 			Expect(err).NotTo(HaveOccurred())
+			// TODO remove once we understand why Expect() below sometimes failed (for no apparent reason)
+			logf.Log.Info("p1New.Name: " + p1New.Name)
+			logf.Log.Info(fmt.Sprintf("intersection: %#v", intersection([]string{p1New.Name}, []string{pod1.Name, pod2.Name, pod3.Name})))
 			Expect(intersection([]string{p1New.Name}, []string{pod1.Name, pod2.Name, pod3.Name})).To(HaveLen(1))
 			// Note: the down-scaling is somewhat slow. First, the controller-manager needs to assign the
 			// IdleAgentPodFirstDetectionTimestampAnnotationKey annotation to the Pod, and only in the next loop the
