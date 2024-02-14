@@ -1,18 +1,45 @@
 name: Continuous Integration
 on: [ push, pull_request ]
 
-# Scratchpad:
-# Split job into two jobs, first one runs fake_platform_server and service tests,
-# 2nd one runs only E2E tests in a matrix configuration that sets different k8s versions
+env:
+  E2E_PACKAGE_PATH: internal/controller
+  GINKGO_PACKAGE_NAME: github.com/onsi/ginkgo/v2/ginkgo
 
 jobs:
-  ci:
+  unit-and-integration-tests:
     runs-on: ubuntu-latest
     env:
       TEST_AZP_POOL_NAME: "automated-testing"
       TEST_EXPECTED_AZP_POOL_ID: "12"
       TEST_AZP_ORGANIZATION_URL: ${{ secrets.AZP_ORGANIZATION_URL }}
       TEST_AZP_TOKEN: ${{ secrets.AZP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.20"
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: |
+          go install $GINKGO_PACKAGE_NAME
+          ginkgo --skip-package $E2E_PACKAGE_PATH -r
+
+  end-to-end-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        kind-node-image:
+          - "kindest/node:v1.27.10"
+          - "kindest/node:v1.28.6"
+          - "kindest/node:v1.29.1"
     steps:
       - uses: actions/checkout@v4
 
@@ -37,22 +64,20 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-#      - name: Set up Docker Buildx
-#        id: buildx
-#        uses: docker/setup-buildx-action@v3
-
       - name: Build Docker images without pushing
         run: ./build-docker-images.sh
 
-#      - uses: dominikh/staticcheck-action@v1.3.0 TODO add back once all checks are addressed
-#        with:
-#          version: "2023.1.3"
-#          install-go: false
+      #      - uses: dominikh/staticcheck-action@v1.3.0 TODO add back once all checks are addressed
+      #        with:
+      #          version: "2023.1.3"
+      #          install-go: false
 
       - name: Run tests
+        env:
+          KIND_NODE_IMAGE: ${{ matrix.kind-node-image }}
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo
-          ginkgo ./...
+          go install $GINKGO_PACKAGE_NAME
+          ginkgo $E2E_PACKAGE_PATH
 
 # TODO
 # - Add https://github.com/EnricoMi/publish-unit-test-result-action

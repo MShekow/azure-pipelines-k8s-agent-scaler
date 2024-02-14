@@ -176,8 +176,13 @@ var _ = BeforeSuite(func() {
 	envCfg = envconf.New()
 	ctx = context.Background()
 	kindClusterName = envconf.RandomName("kind", 12)
-	// TODO change image via env var, run as GHA matrix job testing different K8s versions
-	createFunc := envfuncs.CreateClusterWithConfig(kind.NewProvider(), kindClusterName, "testdata/kind-config.yaml", kind.WithImage("kindest/node:v1.27.3"))
+
+	kindNodeImage := os.Getenv("KIND_NODE_IMAGE")
+	if kindNodeImage == "" {
+		kindNodeImage = "kindest/node:v1.27.3"
+		logf.Log.Info("Using default KIND node image", "image", kindNodeImage)
+	}
+	createFunc := envfuncs.CreateClusterWithConfig(kind.NewProvider(), kindClusterName, "testdata/kind-config.yaml", kind.WithImage(kindNodeImage))
 
 	ctx, err = createFunc(ctx, envCfg)
 	Expect(err).NotTo(HaveOccurred())
