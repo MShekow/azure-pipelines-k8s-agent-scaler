@@ -2,12 +2,17 @@ name: Continuous Integration
 on: [ push, pull_request ]
 
 # Scratchpad:
-# Set up the TEST_AZP_... variables for the end-to-end test
-# Run a matrix job to set different k8s versions
+# Split job into two jobs, first one runs fake_platform_server and service tests,
+# 2nd one runs only E2E tests in a matrix configuration that sets different k8s versions
 
 jobs:
   ci:
     runs-on: ubuntu-latest
+    env:
+      TEST_AZP_POOL_NAME: "automated-testing"
+      TEST_EXPECTED_AZP_POOL_ID: "12"
+      TEST_AZP_ORGANIZATION_URL: ${{ secrets.AZP_ORGANIZATION_URL }}
+      TEST_AZP_TOKEN: ${{ secrets.AZP_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,9 +37,9 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: docker/setup-buildx-action@v3
+#      - name: Set up Docker Buildx
+#        id: buildx
+#        uses: docker/setup-buildx-action@v3
 
       - name: Build Docker images without pushing
         run: ./build-docker-images.sh
