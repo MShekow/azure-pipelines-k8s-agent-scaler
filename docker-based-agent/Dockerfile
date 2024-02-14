@@ -1,5 +1,5 @@
 #based on https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/docker?view=azure-devops#create-and-build-the-dockerfile-1
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 #install agent dependencies
 RUN apt update && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
@@ -15,7 +15,7 @@ RUN apt update && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-ins
     zip \
     lsb-release \
     software-properties-common \
-    libicu66
+    libicu70
 
 ARG TARGETARCH
 
@@ -30,7 +30,7 @@ RUN curl -sL 'https://azurecliprod.blob.core.windows.net/$root/deb_install.sh' |
 # ENV TARGETARCH='linux-arm64'
 WORKDIR /azp
 
-ENV AGENT_VERSION="3.224.1"
+ENV AGENT_VERSION="3.232.3"
 ENV AGENT_PLATFORM=${TARGETARCH}
 RUN if [ "${TARGETARCH}" = "amd64" ]; then export AGENT_PLATFORM='x64'; fi; curl -LsS https://vstsagentpackage.azureedge.net/agent/${AGENT_VERSION}/vsts-agent-linux-${AGENT_PLATFORM}-${AGENT_VERSION}.tar.gz | tar -xz & wait $!
 
