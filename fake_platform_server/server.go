@@ -2,6 +2,7 @@ package fake_platform_server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/MShekow/azure-pipelines-k8s-agent-scaler/internal/service"
 	"github.com/google/go-cmp/cmp"
@@ -32,6 +33,7 @@ type FakeAzurePipelinesPlatformServer struct {
 	Requests  []Request
 	PoolId    int
 	PoolName  string
+	port      int
 	server    *http.Server
 	isStopped bool
 }
@@ -48,7 +50,6 @@ func NewFakeAzurePipelinesPlatformServer() *FakeAzurePipelinesPlatformServer {
 		PoolId:   0,
 		PoolName: "",
 		server: &http.Server{
-			Addr:    fmt.Sprintf(":%d", DefaultPort),
 			Handler: router,
 		},
 	}
@@ -75,10 +76,12 @@ func (f *FakeAzurePipelinesPlatformServer) Start(port int) error {
 		port = DefaultPort
 	}
 
+	f.server.Addr = fmt.Sprintf(":%d", port) // bind to all IP addresses on the machine
+
 	earlyExit := make(chan error)
 
 	go func() {
-		if err := f.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := f.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("listening on port %d failed: %s\n", port, err)
 			earlyExit <- err
 		}
