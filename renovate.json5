@@ -1,0 +1,20 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 0,
+  "labels": [
+    "dependencies"
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent"
+      ],
+      "description": "We manually update digest references in our go.mod file for fake_agent",
+      "enabled": false
+    }
+  ]
+}
