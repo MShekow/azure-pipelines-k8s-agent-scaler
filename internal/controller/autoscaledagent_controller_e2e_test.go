@@ -145,7 +145,7 @@ func checkRequests(requests []fake_platform_server.Request, startIndex int, expe
 					}
 				}
 
-				return fmt.Errorf("mismatch at indices requests-currentIndex=%d, expectedRequestTypes=%d, j=%d", currentIndex, i, j)
+				return fmt.Errorf("mismatch at indices requests-currentIndex=%d, expectedRequestTypes=%d, j=%d, startIndex=%d\nrequests:\n%#v", currentIndex, i, j, startIndex, requests)
 			}
 		}
 	}
