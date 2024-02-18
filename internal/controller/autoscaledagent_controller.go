@@ -69,7 +69,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		// because the default kube-controller behavior (retrying requests when errors are returned) does not make sense
 		// for resources that have already disappeared
 		// Note that Kubernetes' deletion propagation feature will automatically make sure that deleting a CR also
-		// deletes the Pods created for that CR
+		// deletes the Pods or PVCs created for that CR, so we don't need any extra logic here that takes care of that
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -89,6 +89,8 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// TODO stop with error in case there are multiple CRs targeting the same ADP pool
+
+	// TODO stop with error in case there are multiple objects in PodsWithCapabilities that have the exact same Capabilities map
 
 	httpClient := service.CreateHTTPClient()
 
@@ -735,6 +737,7 @@ func (r *AutoScaledAgentReconciler) terminatedFinishedAgentPods(ctx context.Cont
 
 	for _, runningPod := range runningPods {
 		if len(runningPod.Spec.Containers) > 1 {
+			// TODO this seems to be sometimes wrong - the ContainerStatuses array is NOT necesarily sorted, we have to check the name explicitly!
 			agentContainerHasTerminated := runningPod.Status.ContainerStatuses[0].State.Terminated != nil
 			if agentContainerHasTerminated {
 				var containerIndicesToTerminate []int
@@ -811,6 +814,8 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(ctx context.Context, podNam
 	return stdout.String(), stderr.String(), nil
 }
 
+// TODO remove pointers from CRD for all those variables where we set default values anyway
+
 //TODO (further in the future): think about whether it makes sense to replace preStop lifecycle hook with dynamically-managed
 // PodDisruptionBudget objects. After all, the preStop lifecycle hook only exist to avoid that pods are _voluntarily_
 // disrupted (see https://kubernetes.io/docs/concepts/workloads/pods/disruptions/#voluntary-and-involuntary-disruptions),
@@ -820,14 +825,10 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(ctx context.Context, podNam
 /*
 TODOs: (turn into GitHub Issues)
 
-- Integrate debug switch that can be dynamically turned on/off, e.g. by creating an (empty) file at an expected location
-- Write tests
 - Set up Renovate Bot
 - Terminate all idle agent pods that were created with a different controller-manager version.
   For instance, in the Dockerfile we could have an ARG CONTROLLER_MANAGER_BUILD_ID (turned into an env var) with some default value
   which is overwritten by the GHA workflow
 - Implement Status and Events
 - Min/Max-scaling based on a schedule
-
-
 */
