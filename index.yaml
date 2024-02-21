@@ -2,6 +2,22 @@ apiVersion: v1
 entries:
   azp-k8s-agent-scaler-operator:
   - apiVersion: v2
+    appVersion: 2024.02.21
+    created: "2024-02-21T14:55:29.178559041Z"
+    dependencies:
+    - condition: installCRDs
+      name: azp-k8s-agent-scaler-operator-crds
+      repository: ""
+      version: 0.1.3
+    description: Azure Pipelines Kubernetes-based agent scaler operator
+    digest: 41390732b96d5d20c2c50bbfb9e6b4f3bb723d3224f3215b4dea95afe6f9bf3d
+    home: https://github.com/MShekow/azure-pipelines-k8s-agent-scaler
+    name: azp-k8s-agent-scaler-operator
+    type: application
+    urls:
+    - https://github.com/MShekow/azure-pipelines-k8s-agent-scaler/releases/download/azp-k8s-agent-scaler-operator-0.2.0/azp-k8s-agent-scaler-operator-0.2.0.tgz
+    version: 0.2.0
+  - apiVersion: v2
     appVersion: 2023.12.11
     created: "2023-12-11T11:53:41.139018426Z"
     dependencies:
@@ -184,4 +200,4 @@ entries:
     urls:
     - https://github.com/MShekow/azure-pipelines-k8s-agent-scaler/releases/download/demo-agent-0.1.1/demo-agent-0.1.1.tgz
     version: 0.1.1
-generated: "2023-12-11T11:53:41.139067899Z"
+generated: "2024-02-21T14:55:29.178605728Z"
