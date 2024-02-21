@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	gomega_format "github.com/onsi/gomega/format"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -165,6 +166,7 @@ func buildLocalImages() error {
 
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+	gomega_format.MaxLength = 0 // Ensure that debug output is not truncated
 
 	var err error
 
