@@ -16,5 +16,14 @@
       "description": "We manually update digest references in our go.mod file for fake_agent",
       "enabled": false
     }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["^other-dependencies\\.txt$"],
+      "matchStrings": [
+        "renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))? version=(?<currentValue>.*)\\s"
+      ],
+    },
   ]
 }
