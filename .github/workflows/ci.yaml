@@ -79,6 +79,3 @@ jobs:
         run: |
           go install $GINKGO_PACKAGE_NAME
           ginkgo $E2E_PACKAGE_PATH
-
-# TODO
-# - Add https://github.com/EnricoMi/publish-unit-test-result-action

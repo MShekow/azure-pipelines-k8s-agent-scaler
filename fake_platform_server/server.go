@@ -38,8 +38,6 @@ type FakeAzurePipelinesPlatformServer struct {
 }
 
 func NewFakeAzurePipelinesPlatformServer() *FakeAzurePipelinesPlatformServer {
-	// TODO upgrade to Go 1.22 which has the functionalities built-in, see https://antonz.org/go-1-22/
-	//  meaning that we won't need to use github.com/gorilla/mux any longer
 	router := mux.NewRouter()
 
 	platformServer := &FakeAzurePipelinesPlatformServer{

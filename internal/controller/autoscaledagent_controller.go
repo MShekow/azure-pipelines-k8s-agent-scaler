@@ -88,10 +88,6 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	// TODO stop with error in case there are multiple CRs targeting the same ADP pool
-
-	// TODO stop with error in case there are multiple objects in PodsWithCapabilities that have the exact same Capabilities map
-
 	httpClient := service.CreateHTTPClient()
 
 	azurePat, err := r.getAzurePat(ctx, req, &autoScaledAgent.Spec)
@@ -447,14 +443,6 @@ func (r *AutoScaledAgentReconciler) assignOrCreatePvcs(ctx context.Context, req 
 		return pvcs.Items[i].Name < pvcs.Items[j].Name
 	})
 
-	// TODO filter out all those PVCs from `pvcs` that are already marked as deleted - is there a deletion timestamp?
-	// Example scenario: user reduced maxCount of
-	// some pod to a smaller number, then decides to manually delete the excess PVCs
-	// via kubectl. However, maxTerminatedPodsToKeep is set to a larger number, and
-	// K8s delays deleting PVCs that are used by at least one Pod (even
-	// Terminated/completed Pods). Our controller would keep assigning the PVC to other Pods, and the user
-	// would wonder why the PVC deletion is permanently hanging.
-
 	for _, container := range pod.Spec.Containers {
 		for _, volumeMount := range container.VolumeMounts {
 			if matchingCacheVolume := service.GetMatchingCacheVolume(volumeMount.Name, agent.Spec.ReusableCacheVolumes); matchingCacheVolume != nil {
@@ -532,12 +520,6 @@ func (r *AutoScaledAgentReconciler) assignOrCreatePvcs(ctx context.Context, req 
 
 	return nil
 }
-
-//func (r *AutoScaledAgentReconciler) deleteUnknownPvcs(ctx context.Context, req ctrl.Request, agent *apscalerv1.AutoScaledAgent) error {
-//	// TODO cleans up PVCs for which there are no reusable cache volume definitions anymore
-//	// TODO call
-//	logger := log.FromContext(ctx)
-//}
 
 // deletePromisedAnnotationFromPvcs iterates through reusable cache volume PVCs
 // and removes the PromisedFor annotation if the referenced pod either no longer
@@ -633,8 +615,6 @@ func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context,
 
 			agentContainerName := pod.Spec.Containers[0].Name
 			cmd := []string{"sh", "-c", "pgrep -l Agent.Worker | wc -l"}
-			// TODO differentiate the errors somehow - we only want to "swallow" errors where the pod no longer exists,
-			// but still return errors e.g. when K8s RBAC is lacking
 			if stdout, _, err := r.execCommandInPod(ctx, pod.Namespace, pod.Name, agentContainerName, cmd); err == nil {
 				if stdout == "0\n" {
 					timestampFormat := time.RFC3339
@@ -813,22 +793,3 @@ func (r *AutoScaledAgentReconciler) execCommandInPod(ctx context.Context, podNam
 
 	return stdout.String(), stderr.String(), nil
 }
-
-// TODO remove pointers from CRD for all those variables where we set default values anyway
-
-//TODO (further in the future): think about whether it makes sense to replace preStop lifecycle hook with dynamically-managed
-// PodDisruptionBudget objects. After all, the preStop lifecycle hook only exist to avoid that pods are _voluntarily_
-// disrupted (see https://kubernetes.io/docs/concepts/workloads/pods/disruptions/#voluntary-and-involuntary-disruptions),
-// e.g. when draining a node. We want to avoid disruption while the agent works on a job, otherwise we don't care
-// However, it might happen that the controller is too slow to create a new PodDisruptionBudget object
-
-/*
-TODOs: (turn into GitHub Issues)
-
-- Set up Renovate Bot
-- Terminate all idle agent pods that were created with a different controller-manager version.
-  For instance, in the Dockerfile we could have an ARG CONTROLLER_MANAGER_BUILD_ID (turned into an env var) with some default value
-  which is overwritten by the GHA workflow
-- Implement Status and Events
-- Min/Max-scaling based on a schedule
-*/
