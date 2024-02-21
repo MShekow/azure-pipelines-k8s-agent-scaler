@@ -1,6 +1,6 @@
 module github.com/MShekow/azure-pipelines-k8s-agent-scaler
 
-go 1.21
+go 1.22
 
 require (
 	github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240218102207-cf3cc3b19be2

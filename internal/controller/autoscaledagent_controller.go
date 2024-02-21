@@ -134,7 +134,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		matchingJobs := pendingJobs.GetInexactMatch(&podsWithCapabilities.Capabilities)
 		matchingJobsCount := service.GetJobCount(matchingJobs)
 
-		if int(matchingPodsCount) > service.Min(int(*podsWithCapabilities.MaxCount), service.Max(matchingJobsCount, int(*podsWithCapabilities.MinCount))) {
+		if int(matchingPodsCount) > min(int(*podsWithCapabilities.MaxCount), max(matchingJobsCount, int(*podsWithCapabilities.MinCount))) {
 			// Delete pods because we have too many. This situation should be rare (because agents normally terminate
 			// after having run a job), but it can happen in specific situations, e.g.
 			// - the user reduced the maxCount in a pod spec in an AutoScaledAgentSpec CR

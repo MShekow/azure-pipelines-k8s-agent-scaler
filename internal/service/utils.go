@@ -443,22 +443,6 @@ func GenerateRandomString() string {
 	return string(result)
 }
 
-func Max(x, y int) int {
-	if x > y {
-		return x
-	}
-	return y
-}
-
-// Note: Min() and Max() can be removed once we transitioned to Go v1.21 or newer
-
-func Min(x, y int) int {
-	if x < y {
-		return x
-	}
-	return y
-}
-
 func containsString(slice []string, x string) bool {
 	for _, n := range slice {
 		if x == n {
