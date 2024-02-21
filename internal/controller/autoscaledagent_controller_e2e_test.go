@@ -465,7 +465,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 			// 15 seconds (no pods should be created)
 			autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers =
 				append(autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers, corev1.Container{
-					Name:            "sidecar",
+					Name:            "a-sidecar", // use a name that comes before "azure-pipelines-agent" in the alphabet, to test GetContainerStatusIndex()
 					Image:           "busybox:latest",
 					ImagePullPolicy: corev1.PullAlways,
 					Lifecycle:       preStopLifecycleHandler,

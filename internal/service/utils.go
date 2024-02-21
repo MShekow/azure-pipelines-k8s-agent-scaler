@@ -718,7 +718,7 @@ func GetContainerStatusIndex(pod *corev1.Pod, spec *apscalerv1.AutoScaledAgentSp
 		}
 	}
 	if agentContainerName == "" {
-		return -1, fmt.Errorf("no PodsWithCapabilities template found for pod %s (should never happen!!)", pod.Name)
+		return 0, fmt.Errorf("GetContainerStatusIndex(): no PodsWithCapabilities template found for pod %s (should never happen!!)", pod.Name)
 	}
 
 	for i, containerStatus := range pod.Status.ContainerStatuses {
@@ -726,7 +726,34 @@ func GetContainerStatusIndex(pod *corev1.Pod, spec *apscalerv1.AutoScaledAgentSp
 			return i, nil
 		}
 	}
-	return -1, fmt.Errorf("no agent container found in pod that has the expected name %s", agentContainerName)
+	return 0, fmt.Errorf("GetContainerStatusIndex(): no agent container found in pod that has the expected name %s", agentContainerName)
+}
+
+// GetContainerSpecIndex is the reverse of GetContainerStatusIndex. It returns
+// the index of the container in the Pod template spec(!) whose name matches the
+// name of the container in the Pod status for the given containerStatusIndex.
+func GetContainerSpecIndex(pod *corev1.Pod, spec *apscalerv1.AutoScaledAgentSpec, containerStatusIndex int) (int, error) {
+	capabilitiesStrOfPod := pod.Annotations[CapabilitiesAnnotationName]
+	var correctPodSpec *corev1.PodSpec
+	for _, podsWithCapabilities := range spec.PodsWithCapabilities {
+		capabilitiesStrOfTemplate := GetSortedStringificationOfCapabilitiesMap(&podsWithCapabilities.Capabilities)
+		if capabilitiesStrOfTemplate == capabilitiesStrOfPod {
+			correctPodSpec = &podsWithCapabilities.PodTemplateSpec.Spec
+			break
+		}
+	}
+	if correctPodSpec == nil {
+		return 0, fmt.Errorf("GetContainerSpecIndex(): no PodsWithCapabilities template found for pod %s (should never happen!!)", pod.Name)
+	}
+
+	for i, container := range correctPodSpec.Containers {
+		if container.Name == pod.Status.ContainerStatuses[containerStatusIndex].Name {
+			return i, nil
+		}
+	}
+
+	return 0, fmt.Errorf("GetContainerSpecIndex(): none of the pods in the spec have the name %s (should never happen!!)",
+		pod.Status.ContainerStatuses[containerStatusIndex].Name)
 }
 
 func IsVerboseDebugLoggingEnabled() bool {

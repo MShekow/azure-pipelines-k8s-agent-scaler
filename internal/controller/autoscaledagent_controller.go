@@ -78,7 +78,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	err = r.terminatedFinishedAgentPods(ctx, req)
+	err = r.terminateFinishedAgentPods(ctx, req, &autoScaledAgent.Spec)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -695,61 +695,73 @@ func (r *AutoScaledAgentReconciler) deleteTerminatedAgentPods(ctx context.Contex
 	return nil
 }
 
-// terminatedFinishedAgentPods terminates agent pods (without deleting them), so
+// terminateFinishedAgentPods terminates agent pods (without deleting them), so
 // that one can still access the logs of all the containers in the terminated
 // pods (to diagnose problems). Basically, once an Azure Pipelines job has
-// completed, the first container (that runs the agent) will be terminated, but
-// if the pod has any other containers defined (statically in the pod spec, or by
-// using the ExtraAgentContainers feature), these pods are likely still running,
-// and thus the Pod is also still in a "running" phase.
-// terminatedFinishedAgentPods() terminates those extra containers (which results
+// completed, the first container (that runs the agent) terminates automatically,
+// but if the pod has any other containers defined (statically in the pod spec,
+// or by using the ExtraAgentContainers feature), these pods are likely still
+// running, and thus the Pod is also still in a "running" phase.
+// terminateFinishedAgentPods() terminates those extra containers (which results
 // in the Pod phase being "Terminated") by changing the container's image to some
 // non-existent image, which makes Kubernetes try to restart the container: the
 // container is terminated but not really restarted, because of the image pull
 // error. However, the container's logs seem to be preserved.
-func (r *AutoScaledAgentReconciler) terminatedFinishedAgentPods(ctx context.Context, req ctrl.Request) error {
+func (r *AutoScaledAgentReconciler) terminateFinishedAgentPods(ctx context.Context, req ctrl.Request, agentSpec *apscalerv1.AutoScaledAgentSpec) error {
 	logger := log.FromContext(ctx)
 	runningPods, err := r.getPodsWithPhases(ctx, req, []string{"Running"})
 	if err != nil {
-		logger.Error(err, "terminatedFinishedAgentPods(): unable to get Running pods")
+		logger.Error(err, "terminateFinishedAgentPods(): unable to get Running pods")
 		return err
 	}
 
 	for _, runningPod := range runningPods {
 		if len(runningPod.Spec.Containers) > 1 {
-			// TODO this seems to be sometimes wrong - the ContainerStatuses array is NOT necesarily sorted, we have to check the name explicitly!
-			agentContainerHasTerminated := runningPod.Status.ContainerStatuses[0].State.Terminated != nil
+			azpAgentContainerStatusIndex, err := service.GetContainerStatusIndex(&runningPod, agentSpec, 0)
+			if err != nil {
+				return err
+			}
+			agentContainerHasTerminated := runningPod.Status.ContainerStatuses[azpAgentContainerStatusIndex].State.Terminated != nil
 			if agentContainerHasTerminated {
-				var containerIndicesToTerminate []int
-				for i := 1; i < len(runningPod.Spec.Containers); i++ {
+				var containerStatusIndicesToTerminate []int
+				for i := 0; i < len(runningPod.Status.ContainerStatuses); i++ {
+					if i == azpAgentContainerStatusIndex {
+						continue
+					}
 					if runningPod.Status.ContainerStatuses[i].State.Running != nil {
-						containerIndicesToTerminate = append(containerIndicesToTerminate, i)
+						containerStatusIndicesToTerminate = append(containerStatusIndicesToTerminate, i)
 					}
 				}
 
-				if len(containerIndicesToTerminate) > 0 {
+				if len(containerStatusIndicesToTerminate) > 0 {
 					// Terminating a pod takes a while (multiple(!) reconciliation cycles), so to avoid that the reconcile-
 					// algorithm is confused by "running" pods that are in reality already terminating, we set our own annotation
 					// as a means to filter such pods out
 					if _, exists := runningPod.Annotations[service.PodTerminationInProgressAnnotationKey]; !exists {
-						logger.Info("Found containers to terminate", "podName", runningPod.Name, "containerIndicesToTerminate", containerIndicesToTerminate)
+						logger.Info("terminateFinishedAgentPods(): Found containers to terminate",
+							"podName", runningPod.Name, "containerStatusIndicesToTerminate",
+							containerStatusIndicesToTerminate)
 
-						for _, containerIndex := range containerIndicesToTerminate {
-							containerImage := runningPod.Spec.Containers[containerIndex].Image
+						for _, containerStatusIndex := range containerStatusIndicesToTerminate {
+							containerImage := runningPod.Status.ContainerStatuses[containerStatusIndex].Image
 							nonExistentImage := containerImage + service.NonExistentContainerImageSuffix
-							runningPod.Spec.Containers[containerIndex].Image = nonExistentImage
+							specIndex, err := service.GetContainerSpecIndex(&runningPod, agentSpec, containerStatusIndex)
+							if err != nil {
+								return err
+							}
+							runningPod.Spec.Containers[specIndex].Image = nonExistentImage
 						}
 
 						err = r.Update(ctx, &runningPod)
 						if err != nil {
-							logger.Error(err, "terminatedFinishedAgentPods(): unable to change images to terminate the pod")
+							logger.Error(err, "terminateFinishedAgentPods(): unable to change images to terminate the pod")
 							return err
 						}
 
 						runningPod.Annotations[service.PodTerminationInProgressAnnotationKey] = "1"
 						err = r.Update(ctx, &runningPod)
 						if err != nil {
-							logger.Error(err, "terminatedFinishedAgentPods(): unable to set the termination annotation")
+							logger.Error(err, "terminateFinishedAgentPods(): unable to set the termination annotation")
 							return err
 						}
 					}
