@@ -240,7 +240,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 			return false, err
 		}
 
-		statusIndex, err := service.GetContainerStatusIndex(pod, &autoScaledAgent.Spec, containerIndex)
+		statusIndex, err := service.GetContainerStatusIndex(pod, containerIndex)
 		if err != nil {
 			return false, err
 		}

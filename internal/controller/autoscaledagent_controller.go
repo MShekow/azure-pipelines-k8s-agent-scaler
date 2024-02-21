@@ -78,7 +78,7 @@ func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	err = r.terminateFinishedAgentPods(ctx, req, &autoScaledAgent.Spec)
+	err = r.terminateFinishedAgentPods(ctx, req)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -707,7 +707,7 @@ func (r *AutoScaledAgentReconciler) deleteTerminatedAgentPods(ctx context.Contex
 // non-existent image, which makes Kubernetes try to restart the container: the
 // container is terminated but not really restarted, because of the image pull
 // error. However, the container's logs seem to be preserved.
-func (r *AutoScaledAgentReconciler) terminateFinishedAgentPods(ctx context.Context, req ctrl.Request, agentSpec *apscalerv1.AutoScaledAgentSpec) error {
+func (r *AutoScaledAgentReconciler) terminateFinishedAgentPods(ctx context.Context, req ctrl.Request) error {
 	logger := log.FromContext(ctx)
 	runningPods, err := r.getPodsWithPhases(ctx, req, []string{"Running"})
 	if err != nil {
@@ -717,7 +717,7 @@ func (r *AutoScaledAgentReconciler) terminateFinishedAgentPods(ctx context.Conte
 
 	for _, runningPod := range runningPods {
 		if len(runningPod.Spec.Containers) > 1 {
-			azpAgentContainerStatusIndex, err := service.GetContainerStatusIndex(&runningPod, agentSpec, 0)
+			azpAgentContainerStatusIndex, err := service.GetContainerStatusIndex(&runningPod, 0)
 			if err != nil {
 				return err
 			}
@@ -745,7 +745,7 @@ func (r *AutoScaledAgentReconciler) terminateFinishedAgentPods(ctx context.Conte
 						for _, containerStatusIndex := range containerStatusIndicesToTerminate {
 							containerImage := runningPod.Status.ContainerStatuses[containerStatusIndex].Image
 							nonExistentImage := containerImage + service.NonExistentContainerImageSuffix
-							specIndex, err := service.GetContainerSpecIndex(&runningPod, agentSpec, containerStatusIndex)
+							specIndex, err := service.GetContainerSpecIndex(&runningPod, containerStatusIndex)
 							if err != nil {
 								return err
 							}

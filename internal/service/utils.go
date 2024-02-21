@@ -702,57 +702,32 @@ func GetPoolIdFromName(ctx context.Context, azurePat string, httpClient *http.Cl
 }
 
 // GetContainerStatusIndex returns the index of the container status in the Pod
-// whose name matches the name of the container in the AutoScaledAgentSpec. This
-// is necessary because the container statuses in the Pod are not guaranteed to
-// be in the same order as the containers in the Pod template spec (but the
-// statuses may e.g. be sorted alphabetically).
-func GetContainerStatusIndex(pod *corev1.Pod, spec *apscalerv1.AutoScaledAgentSpec, containerIndex int) (int, error) {
-	// Determine which PodsWithCapabilities template is the correct one
-	capabilitiesStrOfPod := pod.Annotations[CapabilitiesAnnotationName]
-	agentContainerName := ""
-	for _, podsWithCapabilities := range spec.PodsWithCapabilities {
-		capabilitiesStrOfTemplate := GetSortedStringificationOfCapabilitiesMap(&podsWithCapabilities.Capabilities)
-		if capabilitiesStrOfTemplate == capabilitiesStrOfPod {
-			agentContainerName = podsWithCapabilities.PodTemplateSpec.Spec.Containers[containerIndex].Name
-			break
-		}
-	}
-	if agentContainerName == "" {
-		return 0, fmt.Errorf("GetContainerStatusIndex(): no PodsWithCapabilities template found for pod %s (should never happen!!)", pod.Name)
-	}
+// whose name matches the name of the container in the Pod spec for the given
+// containerIndexInSpec. This is necessary because the container statuses in the
+// Pod are not guaranteed to be in the same order as the containers in the Pod
+// template spec (but the statuses may e.g. be sorted alphabetically).
+func GetContainerStatusIndex(pod *corev1.Pod, containerIndexInSpec int) (int, error) {
+	containerName := pod.Spec.Containers[containerIndexInSpec].Name
 
 	for i, containerStatus := range pod.Status.ContainerStatuses {
-		if containerStatus.Name == agentContainerName {
+		if containerStatus.Name == containerName {
 			return i, nil
 		}
 	}
-	return 0, fmt.Errorf("GetContainerStatusIndex(): no agent container found in pod that has the expected name %s", agentContainerName)
+	return 0, fmt.Errorf("GetContainerStatusIndex(): no container found in pod that has the expected name %s", containerName)
 }
 
 // GetContainerSpecIndex is the reverse of GetContainerStatusIndex. It returns
 // the index of the container in the Pod template spec(!) whose name matches the
 // name of the container in the Pod status for the given containerStatusIndex.
-func GetContainerSpecIndex(pod *corev1.Pod, spec *apscalerv1.AutoScaledAgentSpec, containerStatusIndex int) (int, error) {
-	capabilitiesStrOfPod := pod.Annotations[CapabilitiesAnnotationName]
-	var correctPodSpec *corev1.PodSpec
-	for _, podsWithCapabilities := range spec.PodsWithCapabilities {
-		capabilitiesStrOfTemplate := GetSortedStringificationOfCapabilitiesMap(&podsWithCapabilities.Capabilities)
-		if capabilitiesStrOfTemplate == capabilitiesStrOfPod {
-			correctPodSpec = &podsWithCapabilities.PodTemplateSpec.Spec
-			break
-		}
-	}
-	if correctPodSpec == nil {
-		return 0, fmt.Errorf("GetContainerSpecIndex(): no PodsWithCapabilities template found for pod %s (should never happen!!)", pod.Name)
-	}
-
-	for i, container := range correctPodSpec.Containers {
+func GetContainerSpecIndex(pod *corev1.Pod, containerStatusIndex int) (int, error) {
+	for i, container := range pod.Spec.Containers {
 		if container.Name == pod.Status.ContainerStatuses[containerStatusIndex].Name {
 			return i, nil
 		}
 	}
 
-	return 0, fmt.Errorf("GetContainerSpecIndex(): none of the pods in the spec have the name %s (should never happen!!)",
+	return 0, fmt.Errorf("GetContainerSpecIndex(): none of the containers in the spec have the name %s (should never happen!!)",
 		pod.Status.ContainerStatuses[containerStatusIndex].Name)
 }
 
