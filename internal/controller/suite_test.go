@@ -179,7 +179,7 @@ var _ = BeforeSuite(func() {
 
 	kindNodeImage := os.Getenv("KIND_NODE_IMAGE")
 	if kindNodeImage == "" {
-		kindNodeImage = "kindest/node:v1.27.3"
+		kindNodeImage = "kindest/node:v1.27.10"
 		logf.Log.Info("Using default KIND node image", "image", kindNodeImage)
 	}
 	createFunc := envfuncs.CreateClusterWithConfig(kind.NewProvider(), kindClusterName, "testdata/kind-config.yaml", kind.WithImage(kindNodeImage))
