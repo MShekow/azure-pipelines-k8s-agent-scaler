@@ -54,7 +54,7 @@ jobs:
           curl -L --silent -o ktunnel.deb https://github.com/omrikiei/ktunnel/releases/download/v1.6.1/ktunnel_1.6.1_linux_amd64.deb
           sudo dpkg -i ktunnel.deb
 
-      - uses: azure/setup-helm@v3
+      - uses: azure/setup-helm@v4
         with:
           version: 'latest' # default is latest (stable)
           token: ${{ secrets.GITHUB_TOKEN }} # only needed if version is 'latest'
