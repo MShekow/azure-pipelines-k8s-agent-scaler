@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 	"sort"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -582,13 +583,16 @@ func (r *AutoScaledAgentReconciler) deletePromisedAnnotationFromPvcs(ctx context
 	return nil
 }
 
-// getTerminateablePod returns the first agent Pod that has either not even been
-// scheduled, or where "kubectl exec <podname> pgrep -l Agent.Worker | wc -l"
-// returns "0" for the AZP agent container, indicating that the agent in the pod
-// is not actively working on any job (and thus safe to terminate). Errors are
-// swallowed. Note that for kubectl exec, we need to know the container name, but
-// we assume that the first container of the respective podspec is always the
-// Azure DevOps Agent container
+// getTerminateablePod returns the first agent Pod that has either
+//   - not even been scheduled to some node, or
+//   - whose AZP agent pod is already stopped / dead, or
+//   - where "kubectl exec <podname> pgrep -l Agent.Worker | wc -l"
+//     returns "0" for the AZP agent container, indicating that the agent in the pod
+//     is not actively working on any job (and thus safe to terminate).
+//
+// Errors are swallowed. Note that for kubectl exec, we need to know the
+// container name, but we assume that the first container of the respective
+// podspec is always the Azure DevOps Agent container
 func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context,
 	pods *map[string][]corev1.Pod, agentMinIdlePeriod time.Duration) (*corev1.Pod, string, error) {
 	logger := log.FromContext(ctx)
@@ -656,6 +660,11 @@ func (r *AutoScaledAgentReconciler) getTerminateablePod(ctx context.Context,
 					logger.Info("getTerminateablePod(): got unexpected stdout of AZP agent container", "podName", pod.Name, "stdout", stdout)
 				}
 			} else {
+				if strings.Contains(err.Error(), "container not found") || strings.Contains(err.Error(), "cannot exec in a stopped container") {
+					// The Pod is already half-dead anyway
+					return &pod, "AZP container not found or already stopped", nil
+				}
+
 				// Note that we ignore this error, because it is not critical
 				logger.Info("getTerminateablePod(): unable to exec command in pod", "podName", pod.Name, "err", err)
 			}
