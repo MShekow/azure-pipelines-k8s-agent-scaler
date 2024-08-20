@@ -89,6 +89,9 @@ Features of `azure-pipelines-k8s-agent-scaler`:
   CLI tool [azure-pipelines-agent-registrator](https://github.com/MShekow/azure-pipelines-agent-registrator)
 - Operator can be installed into your Kubernetes cluster via **Kustomize** or **Helm**
 
+> [!WARNING]  
+> This solution runs Azure DevOps agents as containers in Kubernetes. As documented [here](https://learn.microsoft.com/en-us/azure/devops/pipelines/agents/docker?view=azure-devops#use-docker-within-a-docker-container), such container-based agents cannot run Docker inside Docker. Consequently, neither the [Docker task](https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/docker-v2?view=azure-pipelines&tabs=yaml) nor [container-based jobs](https://learn.microsoft.com/en-us/azure/devops/pipelines/process/container-phases) will work! `ExtraAgentContainer` is a means to replace these features (using **BuildKit** to build Docker images).
+
 ## Getting Started
 
 You need a Kubernetes cluster to run against, e.g. the one by Docker Desktop, [k3d](https://k3d.io),
