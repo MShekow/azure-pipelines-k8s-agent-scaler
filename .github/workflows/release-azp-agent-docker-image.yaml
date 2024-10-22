@@ -37,7 +37,7 @@ jobs:
             type=raw,value={{date 'YYYY.MM.DD'}}
 
       - name: Build and push image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: docker-based-agent
           platforms: linux/amd64,linux/arm64
