@@ -20,7 +20,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["^other-dependencies\\.txt$"],
+      "fileMatch": ["^other-dependencies\\.txt$", "^\\.github\\/workflows\\/.*\\.ya?ml$"],
       "matchStrings": [
         "renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)( versioning=(?<versioning>.*?))? version=(?<currentValue>.*)\\s"
       ],
