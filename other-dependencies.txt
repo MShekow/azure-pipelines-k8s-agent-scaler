@@ -1,4 +1,4 @@
 This file is scanned by Renovate Bot to notify us of any dependency updates that cannot be detected by other means.
 
 Kubebuilder: it's a CLI tool used by the developer, not a Go module, so we don't need to update it in go.mod
-# renovate: datasource=github-tags depName=kubernetes-sigs/kubebuilder versioning=semver version=v3.14.0
+# renovate: datasource=github-tags depName=kubernetes-sigs/kubebuilder versioning=semver version=v4.3.0
