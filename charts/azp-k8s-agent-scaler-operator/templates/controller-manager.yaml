@@ -33,6 +33,7 @@ spec:
             - --leader-elect
             {{- end }}
             - -zap-time-encoding=rfc3339nano  # improve the precision up to nanoseconds
+            - --health-probe-bind-address=:8081
           image: {{ include "azp-k8s-agent-scaler-operator.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           name: manager

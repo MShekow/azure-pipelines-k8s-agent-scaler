@@ -143,6 +143,24 @@ log output either), you can temporarily enable additional debug-prints:
 
 ## Development
 
+### Upgrading dependencies
+
+Kubebuilder suggests a working combination of other libraries, such as `controller-runtime` or `controller-tools` (CLI), so we should not update them manually, but only whenever there is a new Kubebuilder version (see Renovate Bot PRs).
+
+Steps when upgrading a project (see also [official docs](https://book.kubebuilder.io/reference/rescaffold)):
+
+- Download the updated Kubebuilder binary (e.g. from GitHub releases)
+  - E.g. `sudo curl -Lo /usr/local/bin/kubebuilder https://github.com/kubernetes-sigs/kubebuilder/releases/download/v4.3.0/kubebuilder_darwin_arm64` + `sudo chmod +x /usr/local/bin/kubebuilder`
+- Run `kubebuilder alpha generate --output-dir=azure-pipelines-k8s-agent-scaler` to re-scaffold the project, and then use your file manager to move the content of the newly-created `azure-pipelines-k8s-agent-scaler` folder to the repository root.
+  - By default, the output directory is named `output-dir`, but then the "output-dir" string will appear in many files and manifests, which is not desired.
+- Git diff the files, keep only those changes that make sense
+- Check whether there are any _new_ files that you need to `git add`
+- Run `go mod tidy`
+- Run `make manifests` and `make generate` to regenerate K8s yaml manifests, and to regenerate Go code
+  - Note: on macOS 15, you might get security-related warning dialogs that prevent you from running the commands. Go to _System settings_ -> _Privacy & Security_, where the controller-gen tool will be listed (_after_ you tried to unsuccessfully run it), and click the _Allow_ button, then run the `make ...` command again (this time, you can click _Open_ in the security dialog)
+- Depending on the changes made to the Kustomize manifests, update the manifests in the Helm chart (in `charts`)
+- Update `other-dependencies.txt` with the new Kubebuilder version
+
 ### How it works
 
 This project aims to follow the

@@ -105,10 +105,10 @@ type ReusableCacheVolume struct {
 type PodsWithCapabilities struct {
 	Capabilities map[string]string `json:"capabilities,omitempty"`
 
-	//+kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Minimum=0
 	MinCount *int32 `json:"minCount,omitempty"`
 
-	//+kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Minimum=0
 	MaxCount *int32 `json:"maxCount,omitempty"`
 
 	PodLabels map[string]string `json:"podLabels,omitempty"`
@@ -124,8 +124,8 @@ type AutoScaledAgentStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // AutoScaledAgent is the Schema for the autoscaledagents API
 type AutoScaledAgent struct {
@@ -136,7 +136,7 @@ type AutoScaledAgent struct {
 	Status AutoScaledAgentStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // AutoScaledAgentList contains a list of AutoScaledAgent
 type AutoScaledAgentList struct {
