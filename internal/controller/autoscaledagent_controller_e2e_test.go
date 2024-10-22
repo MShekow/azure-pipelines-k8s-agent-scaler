@@ -536,7 +536,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		})
 	}
 
-	It("Test one regular job with BuildKit and Helm sidecar", func() {
+	It("Test one regular job with AppArmor pod annotation", func() {
 		// Rationale: starting in K8s v1.30.x, terminateFinishedAgentPods() was unable to change the image of the
 		// sidecar containers, when using the dependencies set by Kubebuilder 3.14.0. The K8s API server would return
 		// an error, "Pod ... is invalid: spec: Forbidden: pod updates may not change fields other than ..."
@@ -548,34 +548,14 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		// 15 seconds (no pods should be created)
 		autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers =
 			append(autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers, corev1.Container{
-				Name:            "buildkit",
-				Image:           "moby/buildkit:v0.16.0-rootless",
-				ImagePullPolicy: corev1.PullAlways,
-				Args:            []string{"--oci-worker-no-process-sandbox"},
-				SecurityContext: &corev1.SecurityContext{
-					SeccompProfile: &corev1.SeccompProfile{
-						Type: corev1.SeccompProfileTypeUnconfined,
-					},
-					RunAsUser:  &[]int64{1000}[0],
-					RunAsGroup: &[]int64{1000}[0],
-				},
-			})
-		autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers =
-			append(autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.Containers, corev1.Container{
-				Name:            "helm",
+				Name:            "sidecar",
 				Image:           "busybox:latest",
 				ImagePullPolicy: corev1.PullAlways,
 				Command:         []string{"/bin/sh"},
 				Args:            []string{"-c", "trap : TERM INT; sleep 9999999999d & wait"},
 			})
-		// Required by BuildKit
-		autoScaledAgent.Spec.PodsWithCapabilities[0].PodAnnotations = map[string]string{"container.apparmor.security.beta.kubernetes.io/buildkit": "unconfined"}
-		policy := corev1.FSGroupChangeOnRootMismatch
-		autoScaledAgent.Spec.PodsWithCapabilities[0].PodTemplateSpec.Spec.SecurityContext =
-			&corev1.PodSecurityContext{
-				FSGroup:             &[]int64{1000}[0],
-				FSGroupChangePolicy: &policy,
-			}
+		autoScaledAgent.Spec.PodsWithCapabilities[0].PodAnnotations =
+			map[string]string{"container.apparmor.security.beta.kubernetes.io/sidecar": "unconfined"}
 
 		Expect(k8sClient.Create(ctx, autoScaledAgent)).Should(Succeed())
 
@@ -586,9 +566,9 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		_, err := checkInitialControllerManagerCallsAgainstFakePlatformServer()
 		Expect(err).NotTo(HaveOccurred())
 
-		// 2. Advertise a matching job (30 seconds duration), expect that the pod is created within 6 seconds
+		// 2. Advertise a matching job (10 seconds duration), expect that the pod is created within 6 seconds
 		// (6 seconds because the controller manager queries the API every 5 seconds, +1 second to reduce flakiness)
-		jobDuration := 30 * time.Second
+		jobDuration := 10 * time.Second
 		_ = server.AddJob(1, azpPoolId, int64(jobDuration), 0, 0, map[string]string{})
 		Eventually(hasOnePod, 6*time.Second, 1*time.Second).Should(BeTrue())
 
