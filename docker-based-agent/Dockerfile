@@ -1,5 +1,5 @@
 #based on https://docs.microsoft.com/en-us/azure/devops/pipelines/agents/docker?view=azure-devops#create-and-build-the-dockerfile-1
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 #install agent dependencies
 RUN apt update && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
