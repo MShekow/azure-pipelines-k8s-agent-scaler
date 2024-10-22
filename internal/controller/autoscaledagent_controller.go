@@ -50,14 +50,14 @@ type AutoScaledAgentReconciler struct {
 	Scheme     *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=azurepipelines.k8s.scaler.io,resources=autoscaledagents,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=azurepipelines.k8s.scaler.io,resources=autoscaledagents/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=azurepipelines.k8s.scaler.io,resources=autoscaledagents/finalizers,verbs=update
+// +kubebuilder:rbac:groups=azurepipelines.k8s.scaler.io,resources=autoscaledagents,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=azurepipelines.k8s.scaler.io,resources=autoscaledagents/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=azurepipelines.k8s.scaler.io,resources=autoscaledagents/finalizers,verbs=update
 
-//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
-//+kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
+// +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
 
 // Reconcile is called for every change in AutoScaledAgent CRs
 func (r *AutoScaledAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
