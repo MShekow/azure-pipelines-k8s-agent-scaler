@@ -1,5 +1,3 @@
-github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240218102207-cf3cc3b19be2 h1:YdUD6Wdp/KhY1QVmzNQGJnAYSkEX3cmPBmXmYKsjOK0=
-github.com/MShekow/azure-pipelines-k8s-agent-scaler/fake_agent v0.0.0-20240218102207-cf3cc3b19be2/go.mod h1:hF9sh7d963cMhfgUhEVvmkKO8LsJjNgZuaolp+EFeK0=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5/go.mod h1:wHh0iHkYZB8zMSxRWpUBQtwG5a7fFgvEO+odwuTv2gs=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
