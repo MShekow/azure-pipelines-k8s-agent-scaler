@@ -543,6 +543,7 @@ var _ = Describe("AutoscaledagentController End-to-end tests", func() {
 		// claiming that we changed the field for the sidecar container's SecurityContext.AppArmorProfile from
 		// &core.AppArmorProfile{Type: "Unconfined"} to nil, even though we do NOT do that in our code (thus, it must
 		// be a problem somewhere in the lower level Golang libraries).
+		// The problem no longer occurs with Kubebuilder 3.15.1 and newer.
 
 		// 1. Deploy CR with BuildKit and Helm sidecar containers, don't advertise any jobs for
 		// 15 seconds (no pods should be created)
