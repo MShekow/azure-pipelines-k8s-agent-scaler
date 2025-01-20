@@ -14,7 +14,7 @@ azpAgentContainer:
   image:
     registry: ghcr.io
     repository: mshekow/azp-agent
-    tag: "2024.02.14"
+    tag: "2025.01.20"
     pullPolicy: Always
 
   resources:
