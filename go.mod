@@ -2,7 +2,7 @@ module github.com/MShekow/azure-pipelines-k8s-agent-scaler
 
 go 1.22.3
 
-toolchain go1.22.5
+toolchain go1.24.4
 
 require (
 	github.com/google/go-cmp v0.6.0
