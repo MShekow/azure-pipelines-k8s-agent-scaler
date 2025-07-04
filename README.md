@@ -1,5 +1,8 @@
 # azure-pipelines-k8s-agent-scaler
 
+> [!CAUTION]
+> I no longer actively maintain this project!
+
 A Kubernetes operator that provisions ephemeral _Pods_ that run Azure DevOps Pipelines agents, as well as other sidecar
 containers.
 
