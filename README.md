@@ -1,7 +1,7 @@
 # azure-pipelines-k8s-agent-scaler
 
 > [!CAUTION]
-> I no longer actively maintain this project!
+> I no longer actively maintain this project! I recommend using [Managed DevOps pools](https://learn.microsoft.com/en-us/azure/devops/managed-devops-pools/overview?view=azure-devops) instead.
 
 A Kubernetes operator that provisions ephemeral _Pods_ that run Azure DevOps Pipelines agents, as well as other sidecar
 containers.
